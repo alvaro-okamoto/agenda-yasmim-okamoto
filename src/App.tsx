@@ -70,7 +70,6 @@ const colors = {
   text: "#0f172a",
   subtext: "#64748b",
   primary: "#0f172a",
-  primarySoft: "#1e293b",
   primaryText: "#ffffff",
   soft: "#f8fafc",
   softBlue: "#f4f8ff",
@@ -179,7 +178,19 @@ const recurrenceWeekdaysSeed: RecurrenceDay[] = [
   { weekday: 5, label: "Sexta", selected: false, times: ["08:00"] },
   { weekday: 6, label: "Sábado", selected: false, times: ["08:00"] },
 ];
-const hourSlots = ["08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"];
+const hourSlots = [
+  "08:00",
+  "09:00",
+  "10:00",
+  "11:00",
+  "12:00",
+  "13:00",
+  "14:00",
+  "15:00",
+  "16:00",
+  "17:00",
+  "18:00",
+];
 
 function nextId(prefix: string) {
   return `${prefix}${Math.random().toString(36).slice(2, 8)}`;
@@ -395,14 +406,19 @@ export default function App() {
 
   const [selectedAppointment, setSelectedAppointment] =
     useState<EnrichedAppointment | null>(null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+
   const [patientDialogOpen, setPatientDialogOpen] = useState(false);
   const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
   const [monthlyOpen, setMonthlyOpen] = useState(false);
+
   const [monthlyPatientDetails, setMonthlyPatientDetails] = useState<{
     name: string;
     appointments: EnrichedAppointment[];
   } | null>(null);
+
   const [toast, setToast] = useState<ToastState>({
     open: false,
     type: "success",
@@ -594,6 +610,40 @@ export default function App() {
       totalAppointments: sessionsPerWeek * Number(newAppointment.recurrenceWeeks || 0),
     };
   }, [newAppointment]);
+
+  const selectedPatientAppointments = useMemo(() => {
+    if (!selectedPatient) return [];
+    return enrichedAppointments
+      .filter((appt) => appt.patientId === selectedPatient.id)
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  }, [selectedPatient, enrichedAppointments]);
+
+  const selectedPatientUpcoming = useMemo(() => {
+    if (!selectedPatient) return [];
+    return selectedPatientAppointments.slice(0, 8);
+  }, [selectedPatient, selectedPatientAppointments]);
+
+  const selectedLocationAppointments = useMemo(() => {
+    if (!selectedLocation) return [];
+    return enrichedAppointments
+      .filter((appt) => appt.locationId === selectedLocation.id)
+      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
+  }, [selectedLocation, enrichedAppointments]);
+
+  const selectedLocationPatients = useMemo(() => {
+    if (!selectedLocation) return [];
+    const ids = Array.from(
+      new Set(
+        selectedLocationAppointments
+          .map((appt) => appt.patientId)
+          .filter(Boolean)
+      )
+    );
+
+    return ids
+      .map((id) => patients.find((patient) => patient.id === id))
+      .filter(Boolean) as Patient[];
+  }, [selectedLocation, selectedLocationAppointments, patients]);
 
   function resetAppointmentForm() {
     setNewAppointment(
@@ -960,12 +1010,7 @@ export default function App() {
         </div>
 
         <SectionCard style={styles.topTabsCard}>
-          <div
-            style={{
-              ...styles.tabsWrap,
-              gridTemplateColumns: "repeat(3, 1fr)",
-            }}
-          >
+          <div style={styles.tabsWrap}>
             {[
               { id: "agenda", label: "Agenda" },
               { id: "pacientes", label: "Pacientes" },
@@ -1296,7 +1341,7 @@ export default function App() {
           <SectionCard>
             <h2 style={styles.sectionTitle}>Pacientes</h2>
             <p style={styles.sectionDescription}>
-              Cadastro simples com frequência e observações.
+              Toque em um paciente para ver sessões, horários e mais detalhes.
             </p>
 
             <div
@@ -1308,35 +1353,47 @@ export default function App() {
                   : "repeat(auto-fit, minmax(240px, 1fr))",
               }}
             >
-              {patients.map((patient) => (
-                <div key={patient.id} style={styles.patientCard}>
-                  <div style={styles.rowBetween}>
-                    <strong>{patient.name}</strong>
-                    <Badge>{patient.status}</Badge>
-                  </div>
+              {patients.map((patient) => {
+                const patientAppointments = enrichedAppointments.filter(
+                  (appt) => appt.patientId === patient.id
+                );
 
-                  <div
-                    style={{
-                      color: colors.subtext,
-                      fontSize: 14,
-                      display: "grid",
-                      gap: 8,
-                      marginTop: 10,
-                    }}
+                return (
+                  <button
+                    key={patient.id}
+                    style={styles.patientCardButton}
+                    onClick={() => setSelectedPatient(patient)}
                   >
-                    <div>Telefone: {patient.phone}</div>
-                    <div>
-                      Local:{" "}
-                      {locations.find((l) => l.id === patient.defaultLocationId)?.name ||
-                        "Sem local"}
+                    <div style={styles.rowBetween}>
+                      <strong>{patient.name}</strong>
+                      <Badge>{patient.status}</Badge>
                     </div>
-                  </div>
 
-                  <div style={{ marginTop: 10, color: colors.subtext, fontSize: 14 }}>
-                    {patient.notes || "Sem observações."}
-                  </div>
-                </div>
-              ))}
+                    <div
+                      style={{
+                        color: colors.subtext,
+                        fontSize: 14,
+                        display: "grid",
+                        gap: 8,
+                        marginTop: 10,
+                        textAlign: "left",
+                      }}
+                    >
+                      <div>Telefone: {patient.phone}</div>
+                      <div>
+                        Local:{" "}
+                        {locations.find((l) => l.id === patient.defaultLocationId)?.name ||
+                          "Sem local"}
+                      </div>
+                      <div>{patientAppointments.length} sessão(ões) cadastrada(s)</div>
+                    </div>
+
+                    <div style={{ marginTop: 10, color: colors.subtext, fontSize: 14, textAlign: "left" }}>
+                      {patient.notes || "Sem observações."}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </SectionCard>
         ) : null}
@@ -1344,17 +1401,40 @@ export default function App() {
         {tab === "locais" ? (
           <SectionCard>
             <h2 style={styles.sectionTitle}>Locais</h2>
-            <p style={styles.sectionDescription}>Locais de atendimento cadastrados.</p>
+            <p style={styles.sectionDescription}>
+              Toque em um local para ver quem atende lá e os próximos atendimentos.
+            </p>
 
             <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
-              {locations.map((loc) => (
-                <div key={loc.id} style={styles.locationRow}>
-                  <strong>{loc.name}</strong>
-                  <span style={{ color: colors.subtext, fontSize: 14 }}>
-                    {filteredAppointments.filter((a) => a.locationId === loc.id).length} atend.
-                  </span>
-                </div>
-              ))}
+              {locations.map((loc) => {
+                const locationAppointments = filteredAppointments.filter(
+                  (a) => a.locationId === loc.id
+                );
+                const patientNames = Array.from(
+                  new Set(locationAppointments.map((a) => a.patient?.name).filter(Boolean))
+                );
+
+                return (
+                  <button
+                    key={loc.id}
+                    style={styles.locationButton}
+                    onClick={() => setSelectedLocation(loc)}
+                  >
+                    <div style={styles.rowBetween}>
+                      <strong>{loc.name}</strong>
+                      <span style={{ color: colors.subtext, fontSize: 14 }}>
+                        {locationAppointments.length} atend.
+                      </span>
+                    </div>
+
+                    <div style={{ marginTop: 10, color: colors.subtext, fontSize: 13, textAlign: "left" }}>
+                      {patientNames.length > 0
+                        ? `Atende: ${patientNames.join(", ")}`
+                        : "Sem pacientes vinculados no momento"}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </SectionCard>
         ) : null}
@@ -1461,6 +1541,142 @@ export default function App() {
               >
                 Cancelar
               </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={!!selectedPatient}
+        onClose={() => setSelectedPatient(null)}
+        title={selectedPatient?.name || "Paciente"}
+        description="Resumo do paciente, sessões e próximos horários."
+      >
+        {selectedPatient ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={styles.infoGrid}>
+              <div>
+                <strong>Telefone:</strong> {selectedPatient.phone}
+              </div>
+              <div>
+                <strong>Local padrão:</strong>{" "}
+                {locations.find((l) => l.id === selectedPatient.defaultLocationId)?.name ||
+                  "Sem local"}
+              </div>
+              <div>
+                <strong>Frequência:</strong> {selectedPatient.frequency}
+              </div>
+              <div>
+                <strong>Status:</strong> {selectedPatient.status}
+              </div>
+              <div>
+                <strong>Total de sessões:</strong> {selectedPatientAppointments.length}
+              </div>
+              <div>
+                <strong>Observações:</strong> {selectedPatient.notes || "Sem observações"}
+              </div>
+            </div>
+
+            <div style={styles.infoBox}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Próximas sessões</div>
+              {selectedPatientUpcoming.length > 0 ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {selectedPatientUpcoming.map((appt) => (
+                    <button
+                      key={appt.id}
+                      style={styles.miniInfoButton}
+                      onClick={() => {
+                        setSelectedPatient(null);
+                        setSelectedAppointment(appt);
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>
+                        {formatDate(appt.date)} às {appt.time}
+                      </div>
+                      <div style={{ color: colors.subtext, fontSize: 13 }}>
+                        {appt.location?.name} • {appt.type}
+                      </div>
+                      <div style={{ color: colors.subtext, fontSize: 12 }}>
+                        {appt.recurrenceLabel || "Único"}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: colors.subtext }}>Nenhuma sessão encontrada.</div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={!!selectedLocation}
+        onClose={() => setSelectedLocation(null)}
+        title={selectedLocation?.name || "Local"}
+        description="Veja os pacientes atendidos aqui e os próximos atendimentos."
+      >
+        {selectedLocation ? (
+          <div style={{ display: "grid", gap: 14 }}>
+            <div style={styles.infoGrid}>
+              <div>
+                <strong>Total de atendimentos:</strong> {selectedLocationAppointments.length}
+              </div>
+              <div>
+                <strong>Pacientes vinculados:</strong> {selectedLocationPatients.length}
+              </div>
+            </div>
+
+            <div style={styles.infoBox}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Pacientes deste local</div>
+              {selectedLocationPatients.length > 0 ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {selectedLocationPatients.map((patient) => (
+                    <button
+                      key={patient.id}
+                      style={styles.miniInfoButton}
+                      onClick={() => {
+                        setSelectedLocation(null);
+                        setSelectedPatient(patient);
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>{patient.name}</div>
+                      <div style={{ color: colors.subtext, fontSize: 13 }}>
+                        {patient.frequency} • {patient.status}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: colors.subtext }}>Nenhum paciente encontrado.</div>
+              )}
+            </div>
+
+            <div style={styles.infoBox}>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Próximos atendimentos</div>
+              {selectedLocationAppointments.length > 0 ? (
+                <div style={{ display: "grid", gap: 10 }}>
+                  {selectedLocationAppointments.slice(0, 8).map((appt) => (
+                    <button
+                      key={appt.id}
+                      style={styles.miniInfoButton}
+                      onClick={() => {
+                        setSelectedLocation(null);
+                        setSelectedAppointment(appt);
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>
+                        {appt.patient?.name} • {formatDate(appt.date)} às {appt.time}
+                      </div>
+                      <div style={{ color: colors.subtext, fontSize: 13 }}>
+                        {appt.type} • {appt.recurrenceLabel || "Único"}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: colors.subtext }}>Nenhum atendimento encontrado.</div>
+              )}
             </div>
           </div>
         ) : null}
@@ -2248,20 +2464,32 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
     gap: 14,
   },
-  patientCard: {
+  patientCardButton: {
     borderRadius: 20,
     border: `1px solid ${colors.border}`,
     padding: 16,
     background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
+    cursor: "pointer",
+    textAlign: "left",
   },
-  locationRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
+  locationButton: {
+    display: "block",
+    width: "100%",
     borderRadius: 18,
     border: `1px solid ${colors.border}`,
     padding: 14,
     background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
+    cursor: "pointer",
+    textAlign: "left",
+  },
+  miniInfoButton: {
+    width: "100%",
+    background: "#ffffff",
+    border: `1px solid ${colors.border}`,
+    borderRadius: 16,
+    padding: 12,
+    textAlign: "left",
+    cursor: "pointer",
   },
   overlay: {
     position: "fixed",
