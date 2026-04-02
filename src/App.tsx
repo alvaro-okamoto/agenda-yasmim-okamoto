@@ -61,25 +61,31 @@ type ToastState = {
   message: string;
 };
 
+type ReturnTarget = null | "monthly" | "patient" | "location";
+
 const colors = {
-  bg: "#f4f7fb",
-  bgAccent: "#eef3fb",
+  bg: "#f5f7fb",
+  bgAccent: "#edf3fb",
   card: "#ffffff",
-  border: "#d9e2ee",
-  borderStrong: "#c8d4e3",
+  cardSoft: "#f8fbff",
+  border: "#d9e4f1",
+  borderStrong: "#c7d5e6",
   text: "#0f172a",
-  subtext: "#64748b",
+  subtext: "#61748f",
   primary: "#0f172a",
+  primarySoft: "#1f2b44",
   primaryText: "#ffffff",
-  soft: "#f8fafc",
-  softBlue: "#f4f8ff",
+  soft: "#f4f8fd",
+  softBlue: "#eef5ff",
   successBg: "#ecfdf5",
   successText: "#047857",
   dangerBg: "#fef2f2",
   dangerText: "#b91c1c",
-  freeBg: "#ecfdf5",
-  freeBorder: "#bbf7d0",
-  shadow: "0 14px 34px rgba(15, 23, 42, 0.06)",
+  freeBg: "#eefcf4",
+  freeBorder: "#bfeccf",
+  warningBg: "#fff7ed",
+  warningText: "#c2410c",
+  shadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
 };
 
 const locationsSeed: Location[] = [
@@ -303,38 +309,38 @@ function Modal({
   description,
   children,
   onClose,
+  onBack,
 }: {
   open: boolean;
   title: string;
   description?: string;
   children: React.ReactNode;
   onClose: () => void;
+  onBack?: () => void;
 }) {
   if (!open) return null;
 
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "start",
-            gap: 12,
-          }}
-        >
-          <div>
-            <h3 style={{ margin: 0, color: colors.text, fontSize: 22 }}>{title}</h3>
-            {description ? (
-              <p style={{ margin: "8px 0 0", color: colors.subtext, fontSize: 14 }}>
-                {description}
-              </p>
+        <div style={styles.modalHeader}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {onBack ? (
+              <button style={styles.iconButton} onClick={onBack} title="Voltar">
+                ←
+              </button>
             ) : null}
+            <div>
+              <h3 style={styles.modalTitle}>{title}</h3>
+              {description ? <p style={styles.modalDescription}>{description}</p> : null}
+            </div>
           </div>
-          <button style={styles.iconButton} onClick={onClose}>
+
+          <button style={styles.iconButton} onClick={onClose} title="Fechar">
             ✕
           </button>
         </div>
+
         <div style={{ marginTop: 20 }}>{children}</div>
       </div>
     </div>
@@ -395,7 +401,7 @@ export default function App() {
   const isMobile = width < 900;
   const isSmallMobile = width < 640;
 
-  const [locations] = useState<Location[]>(locationsSeed);
+  const [locations, setLocations] = useState<Location[]>(locationsSeed);
   const [patients, setPatients] = useState<Patient[]>(patientsSeed);
   const [appointments, setAppointments] = useState<Appointment[]>(appointmentsSeed);
 
@@ -409,10 +415,19 @@ export default function App() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
 
+  const [appointmentReturnTo, setAppointmentReturnTo] = useState<ReturnTarget>(null);
+  const [patientReturnTo, setPatientReturnTo] = useState<ReturnTarget>(null);
+  const [locationReturnTo, setLocationReturnTo] = useState<ReturnTarget>(null);
+
   const [patientDialogOpen, setPatientDialogOpen] = useState(false);
   const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
   const [monthlyOpen, setMonthlyOpen] = useState(false);
+
+  const [manageLocationsOpen, setManageLocationsOpen] = useState(false);
+  const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
+  const [locationFormName, setLocationFormName] = useState("");
+  const [deleteLocationTarget, setDeleteLocationTarget] = useState<Location | null>(null);
 
   const [monthlyPatientDetails, setMonthlyPatientDetails] = useState<{
     name: string;
@@ -618,11 +633,6 @@ export default function App() {
       .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
   }, [selectedPatient, enrichedAppointments]);
 
-  const selectedPatientUpcoming = useMemo(() => {
-    if (!selectedPatient) return [];
-    return selectedPatientAppointments.slice(0, 8);
-  }, [selectedPatient, selectedPatientAppointments]);
-
   const selectedLocationAppointments = useMemo(() => {
     if (!selectedLocation) return [];
     return enrichedAppointments
@@ -633,17 +643,27 @@ export default function App() {
   const selectedLocationPatients = useMemo(() => {
     if (!selectedLocation) return [];
     const ids = Array.from(
-      new Set(
-        selectedLocationAppointments
-          .map((appt) => appt.patientId)
-          .filter(Boolean)
-      )
+      new Set(selectedLocationAppointments.map((appt) => appt.patientId))
     );
-
     return ids
       .map((id) => patients.find((patient) => patient.id === id))
       .filter(Boolean) as Patient[];
   }, [selectedLocation, selectedLocationAppointments, patients]);
+
+  const deleteLocationAppointments = useMemo(() => {
+    if (!deleteLocationTarget) return [];
+    return enrichedAppointments.filter(
+      (appt) => appt.locationId === deleteLocationTarget.id
+    );
+  }, [deleteLocationTarget, enrichedAppointments]);
+
+  const deleteLocationPatients = useMemo(() => {
+    if (!deleteLocationTarget) return [];
+    const ids = Array.from(new Set(deleteLocationAppointments.map((appt) => appt.patientId)));
+    return ids
+      .map((id) => patients.find((patient) => patient.id === id))
+      .filter(Boolean) as Patient[];
+  }, [deleteLocationTarget, deleteLocationAppointments, patients]);
 
   function resetAppointmentForm() {
     setNewAppointment(
@@ -664,7 +684,7 @@ export default function App() {
     setNewPatient({
       name: "",
       phone: "",
-      defaultLocationId: "l1",
+      defaultLocationId: locations[0]?.id || "l1",
       frequency: "Semanal",
       status: "Ativo",
       notes: "",
@@ -824,6 +844,42 @@ export default function App() {
     setMonthlyOpen(true);
   }
 
+  function openAppointment(appt: EnrichedAppointment, returnTo: ReturnTarget = null) {
+    setAppointmentReturnTo(returnTo);
+    setSelectedAppointment(appt);
+  }
+
+  function openPatient(patient: Patient, returnTo: ReturnTarget = null) {
+    setPatientReturnTo(returnTo);
+    setSelectedPatient(patient);
+  }
+
+  function openLocation(location: Location, returnTo: ReturnTarget = null) {
+    setLocationReturnTo(returnTo);
+    setSelectedLocation(location);
+  }
+
+  function handleBackFromAppointment() {
+    setSelectedAppointment(null);
+    if (appointmentReturnTo === "monthly" && monthlyPatientDetails) setMonthlyOpen(true);
+    if (appointmentReturnTo === "patient" && selectedPatient) setSelectedPatient(selectedPatient);
+    if (appointmentReturnTo === "location" && selectedLocation) setSelectedLocation(selectedLocation);
+    setAppointmentReturnTo(null);
+  }
+
+  function handleBackFromPatient() {
+    const returnTo = patientReturnTo;
+    const keepLocation = selectedLocation;
+    setSelectedPatient(null);
+    if (returnTo === "location" && keepLocation) setSelectedLocation(keepLocation);
+    setPatientReturnTo(null);
+  }
+
+  function handleBackFromLocation() {
+    setSelectedLocation(null);
+    setLocationReturnTo(null);
+  }
+
   function openRescheduleDialog() {
     if (!selectedAppointment) return;
     setRescheduleForm({
@@ -884,6 +940,79 @@ export default function App() {
     showToast("success", `Agendamento atualizado para ${status}.`);
   }
 
+  function openManageLocations() {
+    setManageLocationsOpen(true);
+    setEditingLocationId(null);
+    setLocationFormName("");
+    setDeleteLocationTarget(null);
+  }
+
+  function startAddLocation() {
+    setEditingLocationId("new");
+    setLocationFormName("");
+  }
+
+  function startEditLocation(location: Location) {
+    setEditingLocationId(location.id);
+    setLocationFormName(location.name);
+  }
+
+  function cancelLocationForm() {
+    setEditingLocationId(null);
+    setLocationFormName("");
+  }
+
+  function saveLocationForm() {
+    const name = locationFormName.trim();
+    if (!name) {
+      showToast("error", "Informe o nome do local.");
+      return;
+    }
+
+    if (editingLocationId === "new") {
+      const newLocation = { id: nextId("l"), name };
+      setLocations((prev) => [...prev, newLocation]);
+      showToast("success", "Local adicionado com sucesso.");
+    } else if (editingLocationId) {
+      setLocations((prev) =>
+        prev.map((location) =>
+          location.id === editingLocationId ? { ...location, name } : location
+        )
+      );
+      showToast("success", "Local atualizado com sucesso.");
+    }
+
+    setEditingLocationId(null);
+    setLocationFormName("");
+  }
+
+  function requestDeleteLocation(location: Location) {
+    setDeleteLocationTarget(location);
+  }
+
+  function confirmDeleteLocation() {
+    if (!deleteLocationTarget) return;
+
+    setLocations((prev) =>
+      prev.filter((location) => location.id !== deleteLocationTarget.id)
+    );
+
+    setPatients((prev) =>
+      prev.map((patient) =>
+        patient.defaultLocationId === deleteLocationTarget.id
+          ? { ...patient, defaultLocationId: locations[0]?.id || "" }
+          : patient
+      )
+    );
+
+    setAppointments((prev) =>
+      prev.filter((appt) => appt.locationId !== deleteLocationTarget.id)
+    );
+
+    showToast("success", "Local removido com sucesso.");
+    setDeleteLocationTarget(null);
+  }
+
   return (
     <div style={styles.page}>
       <style>{`
@@ -893,7 +1022,7 @@ export default function App() {
           margin: 0;
           font-family: Inter, Arial, Helvetica, sans-serif;
           background:
-            radial-gradient(circle at top left, #f9fbff 0%, #f4f7fb 45%, #eef3fb 100%);
+            radial-gradient(circle at top left, #fbfdff 0%, #f5f7fb 45%, #eef3fb 100%);
           color: ${colors.text};
         }
         button, input, select, textarea {
@@ -933,14 +1062,14 @@ export default function App() {
               <h1
                 style={{
                   ...styles.title,
-                  fontSize: isSmallMobile ? 28 : isMobile ? 34 : 38,
+                  fontSize: isSmallMobile ? 28 : isMobile ? 34 : 40,
                 }}
               >
                 Agenda Terapêutica
               </h1>
               <p style={styles.subtitle}>
-                Uma agenda clara, prática e elegante para acompanhar atendimentos,
-                rotina semanal e organização da clínica.
+                Uma agenda leve, organizada e agradável para acompanhar pacientes,
+                horários e locais de atendimento.
               </p>
             </div>
 
@@ -955,18 +1084,23 @@ export default function App() {
                 style={{ ...styles.primaryButton, width: isMobile ? "100%" : "auto" }}
                 onClick={() => setPatientDialogOpen(true)}
               >
+                <span style={styles.buttonIcon}>👤</span>
                 Novo paciente
               </button>
+
               <button
                 style={{ ...styles.secondaryButton, width: isMobile ? "100%" : "auto" }}
                 onClick={() => setAppointmentDialogOpen(true)}
               >
+                <span style={styles.buttonIcon}>🗓</span>
                 Novo agendamento
               </button>
+
               <button
                 style={{ ...styles.secondaryButton, width: isMobile ? "100%" : "auto" }}
-                onClick={() => setTab("locais")}
+                onClick={openManageLocations}
               >
+                <span style={styles.buttonIcon}>📍</span>
                 Gerenciar locais
               </button>
             </div>
@@ -1012,15 +1146,16 @@ export default function App() {
         <SectionCard style={styles.topTabsCard}>
           <div style={styles.tabsWrap}>
             {[
-              { id: "agenda", label: "Agenda" },
-              { id: "pacientes", label: "Pacientes" },
-              { id: "locais", label: "Locais" },
+              { id: "agenda", label: "Agenda", icon: "🗓" },
+              { id: "pacientes", label: "Pacientes", icon: "👤" },
+              { id: "locais", label: "Locais", icon: "📍" },
             ].map((item) => (
               <button
                 key={item.id}
                 style={tab === item.id ? styles.tabActive : styles.tabButton}
                 onClick={() => setTab(item.id)}
               >
+                <span style={styles.buttonIcon}>{item.icon}</span>
                 {item.label}
               </button>
             ))}
@@ -1117,7 +1252,7 @@ export default function App() {
                               <button
                                 key={appt.id}
                                 style={styles.appointmentButton}
-                                onClick={() => setSelectedAppointment(appt)}
+                                onClick={() => openAppointment(appt)}
                               >
                                 <div style={styles.rowBetween}>
                                   <div style={{ textAlign: "left" }}>
@@ -1163,7 +1298,7 @@ export default function App() {
                             style={{
                               ...styles.weekCard,
                               borderColor: isSelected ? colors.primary : colors.border,
-                              background: isSelected ? "#fbfdff" : colors.card,
+                              background: isSelected ? "#fbfdff" : colors.cardSoft,
                             }}
                           >
                             <button
@@ -1191,7 +1326,7 @@ export default function App() {
                                   <button
                                     key={appt.id}
                                     style={styles.appointmentMini}
-                                    onClick={() => setSelectedAppointment(appt)}
+                                    onClick={() => openAppointment(appt)}
                                   >
                                     <div style={{ fontWeight: 700, fontSize: 12 }}>
                                       {appt.time} • {appt.patient?.name}
@@ -1258,7 +1393,7 @@ export default function App() {
                                 ...styles.monthCell,
                                 borderColor: isSelected ? colors.primary : colors.border,
                                 opacity: day.currentMonth ? 1 : 0.45,
-                                background: isSelected ? "#fbfdff" : colors.card,
+                                background: isSelected ? "#fbfdff" : colors.cardSoft,
                               }}
                               onClick={() => {
                                 setSelectedDate(day.iso);
@@ -1362,7 +1497,7 @@ export default function App() {
                   <button
                     key={patient.id}
                     style={styles.patientCardButton}
-                    onClick={() => setSelectedPatient(patient)}
+                    onClick={() => openPatient(patient)}
                   >
                     <div style={styles.rowBetween}>
                       <strong>{patient.name}</strong>
@@ -1388,7 +1523,14 @@ export default function App() {
                       <div>{patientAppointments.length} sessão(ões) cadastrada(s)</div>
                     </div>
 
-                    <div style={{ marginTop: 10, color: colors.subtext, fontSize: 14, textAlign: "left" }}>
+                    <div
+                      style={{
+                        marginTop: 10,
+                        color: colors.subtext,
+                        fontSize: 14,
+                        textAlign: "left",
+                      }}
+                    >
                       {patient.notes || "Sem observações."}
                     </div>
                   </button>
@@ -1418,7 +1560,7 @@ export default function App() {
                   <button
                     key={loc.id}
                     style={styles.locationButton}
-                    onClick={() => setSelectedLocation(loc)}
+                    onClick={() => openLocation(loc)}
                   >
                     <div style={styles.rowBetween}>
                       <strong>{loc.name}</strong>
@@ -1427,7 +1569,14 @@ export default function App() {
                       </span>
                     </div>
 
-                    <div style={{ marginTop: 10, color: colors.subtext, fontSize: 13, textAlign: "left" }}>
+                    <div
+                      style={{
+                        marginTop: 10,
+                        color: colors.subtext,
+                        fontSize: 13,
+                        textAlign: "left",
+                      }}
+                    >
                       {patientNames.length > 0
                         ? `Atende: ${patientNames.join(", ")}`
                         : "Sem pacientes vinculados no momento"}
@@ -1443,8 +1592,8 @@ export default function App() {
       <Modal
         open={monthlyOpen}
         onClose={() => setMonthlyOpen(false)}
-        title={monthlyPatientDetails?.name || "Paciente"}
-        description="Detalhes dos atendimentos deste mês."
+        title="📊 Resumo do mês"
+        description={monthlyPatientDetails?.name || "Detalhes dos atendimentos deste mês."}
       >
         <div style={{ display: "grid", gap: 12 }}>
           {monthlyPatientDetails?.appointments.map((appt) => (
@@ -1453,7 +1602,7 @@ export default function App() {
               style={styles.summaryButton}
               onClick={() => {
                 setMonthlyOpen(false);
-                setSelectedAppointment(appt);
+                openAppointment(appt, "monthly");
               }}
             >
               <div style={styles.rowBetween}>
@@ -1480,8 +1629,12 @@ export default function App() {
 
       <Modal
         open={!!selectedAppointment}
-        onClose={() => setSelectedAppointment(null)}
-        title="Detalhes do atendimento"
+        onClose={() => {
+          setSelectedAppointment(null);
+          setAppointmentReturnTo(null);
+        }}
+        onBack={appointmentReturnTo ? handleBackFromAppointment : undefined}
+        title="🗓 Detalhes do atendimento"
         description="Resumo rápido do agendamento."
       >
         {selectedAppointment ? (
@@ -1521,24 +1674,28 @@ export default function App() {
               }}
             >
               <button style={styles.secondaryButton} onClick={openRescheduleDialog}>
+                <span style={styles.buttonIcon}>↻</span>
                 Reagendar
               </button>
               <button
                 style={styles.secondaryButton}
                 onClick={() => updateSelectedAppointmentStatus("Confirmado")}
               >
+                <span style={styles.buttonIcon}>✓</span>
                 Confirmar
               </button>
               <button
                 style={styles.secondaryButton}
                 onClick={() => updateSelectedAppointmentStatus("Realizado")}
               >
+                <span style={styles.buttonIcon}>✔</span>
                 Marcar realizado
               </button>
               <button
                 style={styles.secondaryButton}
                 onClick={() => updateSelectedAppointmentStatus("Cancelado")}
               >
+                <span style={styles.buttonIcon}>✕</span>
                 Cancelar
               </button>
             </div>
@@ -1548,8 +1705,12 @@ export default function App() {
 
       <Modal
         open={!!selectedPatient}
-        onClose={() => setSelectedPatient(null)}
-        title={selectedPatient?.name || "Paciente"}
+        onClose={() => {
+          setSelectedPatient(null);
+          setPatientReturnTo(null);
+        }}
+        onBack={patientReturnTo ? handleBackFromPatient : undefined}
+        title={`👤 ${selectedPatient?.name || "Paciente"}`}
         description="Resumo do paciente, sessões e próximos horários."
       >
         {selectedPatient ? (
@@ -1579,16 +1740,13 @@ export default function App() {
 
             <div style={styles.infoBox}>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Próximas sessões</div>
-              {selectedPatientUpcoming.length > 0 ? (
+              {selectedPatientAppointments.length > 0 ? (
                 <div style={{ display: "grid", gap: 10 }}>
-                  {selectedPatientUpcoming.map((appt) => (
+                  {selectedPatientAppointments.slice(0, 8).map((appt) => (
                     <button
                       key={appt.id}
                       style={styles.miniInfoButton}
-                      onClick={() => {
-                        setSelectedPatient(null);
-                        setSelectedAppointment(appt);
-                      }}
+                      onClick={() => openAppointment(appt, "patient")}
                     >
                       <div style={{ fontWeight: 700 }}>
                         {formatDate(appt.date)} às {appt.time}
@@ -1612,8 +1770,12 @@ export default function App() {
 
       <Modal
         open={!!selectedLocation}
-        onClose={() => setSelectedLocation(null)}
-        title={selectedLocation?.name || "Local"}
+        onClose={() => {
+          setSelectedLocation(null);
+          setLocationReturnTo(null);
+        }}
+        onBack={locationReturnTo ? handleBackFromLocation : undefined}
+        title={`📍 ${selectedLocation?.name || "Local"}`}
         description="Veja os pacientes atendidos aqui e os próximos atendimentos."
       >
         {selectedLocation ? (
@@ -1635,10 +1797,7 @@ export default function App() {
                     <button
                       key={patient.id}
                       style={styles.miniInfoButton}
-                      onClick={() => {
-                        setSelectedLocation(null);
-                        setSelectedPatient(patient);
-                      }}
+                      onClick={() => openPatient(patient, "location")}
                     >
                       <div style={{ fontWeight: 700 }}>{patient.name}</div>
                       <div style={{ color: colors.subtext, fontSize: 13 }}>
@@ -1660,10 +1819,7 @@ export default function App() {
                     <button
                       key={appt.id}
                       style={styles.miniInfoButton}
-                      onClick={() => {
-                        setSelectedLocation(null);
-                        setSelectedAppointment(appt);
-                      }}
+                      onClick={() => openAppointment(appt, "location")}
                     >
                       <div style={{ fontWeight: 700 }}>
                         {appt.patient?.name} • {formatDate(appt.date)} às {appt.time}
@@ -1683,9 +1839,151 @@ export default function App() {
       </Modal>
 
       <Modal
+        open={manageLocationsOpen}
+        onClose={() => {
+          setManageLocationsOpen(false);
+          setEditingLocationId(null);
+          setLocationFormName("");
+          setDeleteLocationTarget(null);
+        }}
+        title="📍 Gerenciar locais"
+        description="Adicione, edite ou remova locais de atendimento."
+      >
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={styles.formSection}>
+            <div style={styles.rowBetween}>
+              <strong>Locais cadastrados</strong>
+              {editingLocationId ? null : (
+                <button style={styles.primaryButton} onClick={startAddLocation}>
+                  <span style={styles.buttonIcon}>＋</span>
+                  Adicionar local
+                </button>
+              )}
+            </div>
+
+            {editingLocationId ? (
+              <div style={{ ...styles.infoBox, marginTop: 14 }}>
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div>
+                    <label style={styles.label}>
+                      {editingLocationId === "new" ? "Novo local" : "Editar local"}
+                    </label>
+                    <input
+                      style={styles.input}
+                      value={locationFormName}
+                      onChange={(e) => setLocationFormName(e.target.value)}
+                      placeholder="Nome do local"
+                    />
+                  </div>
+
+                  <div style={styles.footerButtons}>
+                    <button style={styles.secondaryButton} onClick={cancelLocationForm}>
+                      Cancelar
+                    </button>
+                    <button style={styles.primaryButton} onClick={saveLocationForm}>
+                      Salvar
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+              {locations.map((location) => {
+                const linkedAppointments = enrichedAppointments.filter(
+                  (appt) => appt.locationId === location.id
+                );
+                const linkedPatients = Array.from(
+                  new Set(linkedAppointments.map((appt) => appt.patient?.name).filter(Boolean))
+                );
+
+                return (
+                  <div key={location.id} style={styles.manageLocationCard}>
+                    <div style={styles.rowBetween}>
+                      <div style={{ textAlign: "left" }}>
+                        <div style={{ fontWeight: 700 }}>{location.name}</div>
+                        <div style={{ color: colors.subtext, fontSize: 13, marginTop: 6 }}>
+                          {linkedPatients.length > 0
+                            ? `Pacientes: ${linkedPatients.join(", ")}`
+                            : "Sem pacientes vinculados"}
+                        </div>
+                      </div>
+
+                      <div style={styles.manageActions}>
+                        <button
+                          style={styles.secondaryButton}
+                          onClick={() => openLocation(location)}
+                        >
+                          Ver
+                        </button>
+                        <button
+                          style={styles.secondaryButton}
+                          onClick={() => startEditLocation(location)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          style={styles.deleteButton}
+                          onClick={() => requestDeleteLocation(location)}
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {deleteLocationTarget ? (
+            <div style={styles.warningBox}>
+              <div style={{ fontWeight: 800, marginBottom: 10 }}>
+                Confirmar remoção de local
+              </div>
+              <div style={{ color: colors.warningText, marginBottom: 10 }}>
+                Você está removendo <strong>{deleteLocationTarget.name}</strong>.
+              </div>
+
+              <div style={{ color: colors.subtext, fontSize: 14, lineHeight: 1.5 }}>
+                {deleteLocationPatients.length > 0 ? (
+                  <>
+                    Este local possui pacientes vinculados:
+                    <div style={{ marginTop: 8 }}>
+                      {deleteLocationPatients.map((patient) => (
+                        <div key={patient.id}>• {patient.name}</div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  "Este local não possui pacientes vinculados."
+                )}
+              </div>
+
+              <div style={{ color: colors.subtext, fontSize: 14, marginTop: 12 }}>
+                Também serão removidos os agendamentos ligados a este local. Tem certeza?
+              </div>
+
+              <div style={{ ...styles.footerButtons, marginTop: 14 }}>
+                <button
+                  style={styles.secondaryButton}
+                  onClick={() => setDeleteLocationTarget(null)}
+                >
+                  Cancelar
+                </button>
+                <button style={styles.deleteButton} onClick={confirmDeleteLocation}>
+                  Confirmar remoção
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
         open={rescheduleDialogOpen}
         onClose={() => setRescheduleDialogOpen(false)}
-        title="Reagendar atendimento"
+        title="↻ Reagendar atendimento"
         description="Altere data, horário, local e observações."
       >
         <div style={{ display: "grid", gap: 14 }}>
@@ -1708,6 +2006,7 @@ export default function App() {
                 }
               />
             </div>
+
             <div>
               <label style={styles.label}>Novo horário</label>
               <input
@@ -1763,7 +2062,7 @@ export default function App() {
       <Modal
         open={patientDialogOpen}
         onClose={() => setPatientDialogOpen(false)}
-        title="Novo paciente"
+        title="👤 Novo paciente"
         description="Cadastre um novo paciente com informações básicas."
       >
         <div style={{ display: "grid", gap: 14 }}>
@@ -1862,7 +2161,7 @@ export default function App() {
       <Modal
         open={appointmentDialogOpen}
         onClose={() => setAppointmentDialogOpen(false)}
-        title="Novo agendamento"
+        title="🗓 Novo agendamento"
         description="Cadastre um atendimento único ou monte um plano recorrente."
       >
         <div style={{ display: "grid", gap: 14 }}>
@@ -2095,7 +2394,7 @@ export default function App() {
                               />
                               {day.times.length > 1 ? (
                                 <button
-                                  style={styles.smallDanger}
+                                  style={styles.deleteButton}
                                   onClick={() => removeRecurrenceTime(day.weekday, index)}
                                 >
                                   Remover
@@ -2179,15 +2478,14 @@ const styles: Record<string, React.CSSProperties> = {
   },
   topTabsCard: {
     padding: 10,
-    background: "rgba(255,255,255,0.9)",
+    background: "rgba(255,255,255,0.92)",
   },
   card: {
     background: colors.card,
-    borderRadius: 26,
+    borderRadius: 28,
     border: `1px solid ${colors.border}`,
     padding: 20,
     boxShadow: colors.shadow,
-    backdropFilter: "blur(6px)",
   },
   heroHeader: {
     display: "flex",
@@ -2206,8 +2504,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   title: {
     margin: "10px 0 0",
-    fontSize: 38,
-    lineHeight: 1.05,
+    fontSize: 40,
+    lineHeight: 1.02,
     color: colors.text,
     fontWeight: 800,
   },
@@ -2215,13 +2513,16 @@ const styles: Record<string, React.CSSProperties> = {
     margin: "10px 0 0",
     color: colors.subtext,
     fontSize: 15,
-    lineHeight: 1.5,
+    lineHeight: 1.55,
     maxWidth: 620,
   },
   heroButtons: {
     display: "flex",
     gap: 10,
     flexWrap: "wrap",
+  },
+  buttonIcon: {
+    marginRight: 8,
   },
   primaryButton: {
     background: colors.primary,
@@ -2231,7 +2532,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "13px 18px",
     cursor: "pointer",
     fontWeight: 700,
-    boxShadow: "0 12px 24px rgba(15, 23, 42, 0.18)",
+    boxShadow: "0 12px 24px rgba(15, 23, 42, 0.16)",
   },
   secondaryButton: {
     background: "#ffffff",
@@ -2242,12 +2543,22 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     fontWeight: 600,
   },
-  iconButton: {
-    background: colors.card,
-    border: `1px solid ${colors.border}`,
-    borderRadius: 12,
-    padding: "8px 10px",
+  deleteButton: {
+    background: colors.dangerBg,
+    color: colors.dangerText,
+    border: "1px solid #fecaca",
+    borderRadius: 16,
+    padding: "13px 18px",
     cursor: "pointer",
+    fontWeight: 700,
+  },
+  iconButton: {
+    background: "#ffffff",
+    border: `1px solid ${colors.border}`,
+    borderRadius: 14,
+    padding: "9px 12px",
+    cursor: "pointer",
+    minWidth: 44,
   },
   statGrid: {
     display: "grid",
@@ -2274,7 +2585,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: colors.card,
     color: colors.text,
     border: `1px solid ${colors.border}`,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: "14px 14px",
     cursor: "pointer",
     fontWeight: 700,
@@ -2283,11 +2594,11 @@ const styles: Record<string, React.CSSProperties> = {
     background: colors.primary,
     color: colors.primaryText,
     border: `1px solid ${colors.primary}`,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: "14px 14px",
     cursor: "pointer",
     fontWeight: 700,
-    boxShadow: "0 10px 20px rgba(15, 23, 42, 0.16)",
+    boxShadow: "0 10px 20px rgba(15, 23, 42, 0.14)",
   },
   mainGrid: {
     display: "grid",
@@ -2313,14 +2624,14 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     background: colors.softBlue,
     padding: 6,
-    borderRadius: 20,
+    borderRadius: 22,
     border: `1px solid ${colors.border}`,
   },
   viewButton: {
-    background: "rgba(255,255,255,0.9)",
+    background: "#ffffff",
     color: colors.text,
     border: `1px solid ${colors.border}`,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: "12px 10px",
     cursor: "pointer",
     fontWeight: 700,
@@ -2329,11 +2640,11 @@ const styles: Record<string, React.CSSProperties> = {
     background: colors.primary,
     color: colors.primaryText,
     border: `1px solid ${colors.primary}`,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: "12px 10px",
     cursor: "pointer",
     fontWeight: 700,
-    boxShadow: "0 10px 20px rgba(15, 23, 42, 0.16)",
+    boxShadow: "0 10px 20px rgba(15, 23, 42, 0.14)",
   },
   formGrid2: {
     display: "grid",
@@ -2358,7 +2669,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 16,
     border: `1px solid ${colors.borderStrong}`,
     padding: "13px 14px",
-    background: colors.card,
+    background: "#ffffff",
     color: colors.text,
   },
   textarea: {
@@ -2367,12 +2678,12 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 16,
     border: `1px solid ${colors.borderStrong}`,
     padding: "13px 14px",
-    background: colors.card,
+    background: "#ffffff",
     color: colors.text,
     resize: "vertical",
   },
   slotCard: {
-    borderRadius: 20,
+    borderRadius: 22,
     border: `1px solid ${colors.border}`,
     padding: 14,
     background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
@@ -2396,17 +2707,17 @@ const styles: Record<string, React.CSSProperties> = {
   },
   appointmentButton: {
     width: "100%",
-    background: "linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%)",
+    background: "linear-gradient(180deg, #f9fbff 0%, #f2f7fd 100%)",
     border: `1px solid ${colors.border}`,
-    borderRadius: 16,
+    borderRadius: 18,
     padding: 12,
     cursor: "pointer",
   },
   weekCard: {
-    borderRadius: 20,
+    borderRadius: 22,
     border: `1px solid ${colors.border}`,
     padding: 12,
-    background: colors.card,
+    background: colors.cardSoft,
     minHeight: 190,
   },
   dayHeaderButton: {
@@ -2420,24 +2731,24 @@ const styles: Record<string, React.CSSProperties> = {
   },
   appointmentMini: {
     width: "100%",
-    background: "linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%)",
+    background: "linear-gradient(180deg, #ffffff 0%, #f4f8fd 100%)",
     border: `1px solid ${colors.border}`,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 9,
     cursor: "pointer",
     textAlign: "left",
   },
   monthCell: {
     minHeight: 170,
-    borderRadius: 20,
+    borderRadius: 22,
     border: `1px solid ${colors.border}`,
-    background: colors.card,
+    background: colors.cardSoft,
     padding: 10,
     cursor: "pointer",
     textAlign: "left",
   },
   monthTime: {
-    background: "linear-gradient(180deg, #f8fbff 0%, #f2f6fc 100%)",
+    background: "linear-gradient(180deg, #ffffff 0%, #f2f6fc 100%)",
     borderRadius: 12,
     padding: "6px 8px",
     fontSize: 11,
@@ -2465,7 +2776,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 14,
   },
   patientCardButton: {
-    borderRadius: 20,
+    borderRadius: 22,
     border: `1px solid ${colors.border}`,
     padding: 16,
     background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
@@ -2475,9 +2786,9 @@ const styles: Record<string, React.CSSProperties> = {
   locationButton: {
     display: "block",
     width: "100%",
-    borderRadius: 18,
+    borderRadius: 20,
     border: `1px solid ${colors.border}`,
-    padding: 14,
+    padding: 16,
     background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
     cursor: "pointer",
     textAlign: "left",
@@ -2491,10 +2802,34 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: "left",
     cursor: "pointer",
   },
+  formSection: {
+    borderRadius: 20,
+    border: `1px solid ${colors.border}`,
+    background: colors.cardSoft,
+    padding: 16,
+  },
+  manageLocationCard: {
+    borderRadius: 18,
+    border: `1px solid ${colors.border}`,
+    background: "#ffffff",
+    padding: 14,
+  },
+  manageActions: {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  warningBox: {
+    borderRadius: 20,
+    border: "1px solid #fed7aa",
+    background: colors.warningBg,
+    padding: 16,
+  },
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(15,23,42,0.38)",
+    background: "rgba(15,23,42,0.40)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
@@ -2507,10 +2842,27 @@ const styles: Record<string, React.CSSProperties> = {
     maxHeight: "90vh",
     overflowY: "auto",
     background: colors.card,
-    borderRadius: 26,
+    borderRadius: 28,
     padding: 22,
     border: `1px solid ${colors.border}`,
-    boxShadow: "0 24px 48px rgba(15,23,42,0.14)",
+    boxShadow: "0 26px 48px rgba(15,23,42,0.14)",
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "start",
+    gap: 12,
+  },
+  modalTitle: {
+    margin: 0,
+    color: colors.text,
+    fontSize: 24,
+    fontWeight: 800,
+  },
+  modalDescription: {
+    margin: "8px 0 0",
+    color: colors.subtext,
+    fontSize: 14,
   },
   footerButtons: {
     display: "flex",
@@ -2523,7 +2875,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
     color: colors.text,
     fontSize: 14,
-    lineHeight: 1.5,
+    lineHeight: 1.55,
   },
   infoBox: {
     borderRadius: 18,
@@ -2550,7 +2902,7 @@ const styles: Record<string, React.CSSProperties> = {
   recurringDayCard: {
     borderRadius: 18,
     border: `1px solid ${colors.border}`,
-    background: colors.card,
+    background: "#ffffff",
     padding: 12,
   },
   daySelect: {
@@ -2577,15 +2929,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     marginBottom: 10,
     boxShadow: "0 10px 20px rgba(15, 23, 42, 0.14)",
-  },
-  smallDanger: {
-    background: colors.dangerBg,
-    color: colors.dangerText,
-    border: "1px solid #fecaca",
-    borderRadius: 14,
-    padding: "0 12px",
-    cursor: "pointer",
-    minHeight: 46,
   },
   badge: {
     display: "inline-flex",
