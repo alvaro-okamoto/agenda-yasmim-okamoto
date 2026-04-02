@@ -62,20 +62,25 @@ type ToastState = {
 };
 
 const colors = {
-  bg: "#f8fafc",
+  bg: "#f4f7fb",
+  bgAccent: "#eef3fb",
   card: "#ffffff",
-  border: "#dbe2ea",
+  border: "#d9e2ee",
+  borderStrong: "#c8d4e3",
   text: "#0f172a",
   subtext: "#64748b",
   primary: "#0f172a",
+  primarySoft: "#1e293b",
   primaryText: "#ffffff",
-  soft: "#f1f5f9",
+  soft: "#f8fafc",
+  softBlue: "#f4f8ff",
   successBg: "#ecfdf5",
   successText: "#047857",
   dangerBg: "#fef2f2",
   dangerText: "#b91c1c",
   freeBg: "#ecfdf5",
   freeBorder: "#bbf7d0",
+  shadow: "0 14px 34px rgba(15, 23, 42, 0.06)",
 };
 
 const locationsSeed: Location[] = [
@@ -196,6 +201,15 @@ function formatDate(dateStr: string) {
   });
 }
 
+function formatDateLong(dateStr: string) {
+  const d = new Date(`${dateStr}T00:00:00`);
+  return d.toLocaleDateString("pt-BR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
 function getNextOccurrenceDate(startDate: string, weekday: number) {
   const base = new Date(`${startDate}T00:00:00`);
   const currentWeekday = base.getDay();
@@ -218,13 +232,22 @@ function summarizeFreeWindows(items: Array<{ time: string }>) {
   for (let i = 1; i < freeSlots.length; i++) {
     const currentIndex = hourSlots.indexOf(freeSlots[i]);
     if (currentIndex !== prevIndex + 1) {
-      ranges.push(start === hourSlots[prevIndex] ? `${start} livre` : `${start} às ${hourSlots[prevIndex]} livre`);
+      ranges.push(
+        start === hourSlots[prevIndex]
+          ? `${start} livre`
+          : `${start} às ${hourSlots[prevIndex]} livre`
+      );
       start = freeSlots[i];
     }
     prevIndex = currentIndex;
   }
 
-  ranges.push(start === hourSlots[prevIndex] ? `${start} livre` : `${start} às ${hourSlots[prevIndex]} livre`);
+  ranges.push(
+    start === hourSlots[prevIndex]
+      ? `${start} livre`
+      : `${start} às ${hourSlots[prevIndex]} livre`
+  );
+
   return ranges.slice(0, 2).join(" • ");
 }
 
@@ -244,17 +267,22 @@ function createDefaultAppointmentState(
     notes: "",
     scheduleMode: "single",
     recurrenceWeeks: 4,
-    recurrenceDays: recurrenceWeekdaysSeed.map((day) => ({ ...day, times: [...day.times] })),
+    recurrenceDays: recurrenceWeekdaysSeed.map((day) => ({
+      ...day,
+      times: [...day.times],
+    })),
   };
 }
 
 function useWindowWidth() {
   const [width, setWidth] = React.useState(window.innerWidth);
+
   React.useEffect(() => {
     const onResize = () => setWidth(window.innerWidth);
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+
   return width;
 }
 
@@ -276,24 +304,39 @@ function Modal({
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", gap: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "start",
+            gap: 12,
+          }}
+        >
           <div>
-            <h3 style={{ margin: 0, color: colors.text }}>{title}</h3>
+            <h3 style={{ margin: 0, color: colors.text, fontSize: 22 }}>{title}</h3>
             {description ? (
-              <p style={{ margin: "6px 0 0", color: colors.subtext, fontSize: 14 }}>{description}</p>
+              <p style={{ margin: "8px 0 0", color: colors.subtext, fontSize: 14 }}>
+                {description}
+              </p>
             ) : null}
           </div>
           <button style={styles.iconButton} onClick={onClose}>
             ✕
           </button>
         </div>
-        <div style={{ marginTop: 16 }}>{children}</div>
+        <div style={{ marginTop: 20 }}>{children}</div>
       </div>
     </div>
   );
 }
 
-function SectionCard({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function SectionCard({
+  children,
+  style,
+}: {
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
   return <div style={{ ...styles.card, ...style }}>{children}</div>;
 }
 
@@ -305,10 +348,26 @@ function Badge({
   tone?: "default" | "success" | "danger" | "soft";
 }) {
   const toneStyles: Record<string, React.CSSProperties> = {
-    default: { background: colors.soft, color: colors.text, border: `1px solid ${colors.border}` },
-    success: { background: colors.successBg, color: colors.successText, border: "1px solid #a7f3d0" },
-    danger: { background: colors.dangerBg, color: colors.dangerText, border: "1px solid #fecaca" },
-    soft: { background: "#ffffff", color: colors.subtext, border: `1px solid ${colors.border}` },
+    default: {
+      background: colors.soft,
+      color: colors.text,
+      border: `1px solid ${colors.border}`,
+    },
+    success: {
+      background: colors.successBg,
+      color: colors.successText,
+      border: "1px solid #a7f3d0",
+    },
+    danger: {
+      background: colors.dangerBg,
+      color: colors.dangerText,
+      border: "1px solid #fecaca",
+    },
+    soft: {
+      background: "#ffffff",
+      color: colors.subtext,
+      border: `1px solid ${colors.border}`,
+    },
   };
 
   return <span style={{ ...styles.badge, ...toneStyles[tone] }}>{children}</span>;
@@ -322,7 +381,8 @@ const statusTone = (status: string): "default" | "success" | "danger" => {
 
 export default function App() {
   const width = useWindowWidth();
-  const isMobile = width < 768;
+  const isMobile = width < 900;
+  const isSmallMobile = width < 640;
 
   const [locations] = useState<Location[]>(locationsSeed);
   const [patients, setPatients] = useState<Patient[]>(patientsSeed);
@@ -333,7 +393,8 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState("2026-04-01");
   const [search, setSearch] = useState("");
 
-  const [selectedAppointment, setSelectedAppointment] = useState<EnrichedAppointment | null>(null);
+  const [selectedAppointment, setSelectedAppointment] =
+    useState<EnrichedAppointment | null>(null);
   const [patientDialogOpen, setPatientDialogOpen] = useState(false);
   const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
   const [rescheduleDialogOpen, setRescheduleDialogOpen] = useState(false);
@@ -370,7 +431,10 @@ export default function App() {
 
   function showToast(type: "success" | "error", message: string) {
     setToast({ open: true, type, message });
-    window.setTimeout(() => setToast({ open: false, type: "success", message: "" }), 2500);
+    window.setTimeout(
+      () => setToast({ open: false, type: "success", message: "" }),
+      2500
+    );
   }
 
   const enrichedAppointments = useMemo<EnrichedAppointment[]>(() => {
@@ -455,17 +519,22 @@ export default function App() {
   }, [selectedDate]);
 
   const appointmentsByDate = useMemo(() => {
-    return filteredAppointments.reduce<Record<string, EnrichedAppointment[]>>((acc, appt) => {
-      if (!acc[appt.date]) acc[appt.date] = [];
-      acc[appt.date].push(appt);
-      acc[appt.date].sort((a, b) => a.time.localeCompare(b.time));
-      return acc;
-    }, {});
+    return filteredAppointments.reduce<Record<string, EnrichedAppointment[]>>(
+      (acc, appt) => {
+        if (!acc[appt.date]) acc[appt.date] = [];
+        acc[appt.date].push(appt);
+        acc[appt.date].sort((a, b) => a.time.localeCompare(b.time));
+        return acc;
+      },
+      {}
+    );
   }, [filteredAppointments]);
 
   const monthlySummaryByPatient = useMemo(() => {
     const monthPrefix = selectedDate.slice(0, 7);
-    const scoped = filteredAppointments.filter((appt) => appt.date.startsWith(monthPrefix));
+    const scoped = filteredAppointments.filter((appt) =>
+      appt.date.startsWith(monthPrefix)
+    );
 
     const grouped = scoped.reduce<
       Record<
@@ -492,9 +561,9 @@ export default function App() {
 
       acc[key].appointments.push(appt);
       acc[key].total += 1;
-
       if (appt.status === "Realizado") acc[key].completed += 1;
-      if (appt.status === "Agendado" || appt.status === "Confirmado") acc[key].pending += 1;
+      if (appt.status === "Agendado" || appt.status === "Confirmado")
+        acc[key].pending += 1;
 
       acc[key].appointments.sort((a, b) =>
         `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)
@@ -503,12 +572,16 @@ export default function App() {
       return acc;
     }, {});
 
-    return Object.values(grouped).sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
+    return Object.values(grouped).sort(
+      (a, b) => b.total - a.total || a.name.localeCompare(b.name)
+    );
   }, [filteredAppointments, selectedDate]);
 
   const recurrenceSelection = useMemo(() => {
     const selectedDays = newAppointment.recurrenceDays.filter((day) => day.selected);
-    const validDays = selectedDays.filter((day) => day.times.filter((time) => time.trim()).length > 0);
+    const validDays = selectedDays.filter(
+      (day) => day.times.filter((time) => time.trim()).length > 0
+    );
     const sessionsPerWeek = validDays.reduce(
       (acc, day) => acc + day.times.filter((time) => time.trim()).length,
       0
@@ -524,12 +597,18 @@ export default function App() {
 
   function resetAppointmentForm() {
     setNewAppointment(
-      createDefaultAppointmentState(selectedDate, patients[0]?.id || "", locations[0]?.id || "l1")
+      createDefaultAppointmentState(
+        selectedDate,
+        patients[0]?.id || "",
+        locations[0]?.id || "l1"
+      )
     );
   }
 
   function createPatient() {
-    if (!newPatient.name.trim()) return showToast("error", "Informe o nome do paciente.");
+    if (!newPatient.name.trim()) {
+      return showToast("error", "Informe o nome do paciente.");
+    }
 
     setPatients((prev) => [...prev, { ...newPatient, id: nextId("p") }]);
     setNewPatient({
@@ -566,7 +645,9 @@ export default function App() {
         day.weekday === weekday
           ? {
               ...day,
-              times: day.times.map((time, index) => (index === timeIndex ? value : time)),
+              times: day.times.map((time, index) =>
+                index === timeIndex ? value : time
+              ),
             }
           : day
       ),
@@ -685,7 +766,10 @@ export default function App() {
     else createRecurringAppointments();
   }
 
-  function openMonthly(patient: { name: string; appointments: EnrichedAppointment[] }) {
+  function openMonthly(patient: {
+    name: string;
+    appointments: EnrichedAppointment[];
+  }) {
     setMonthlyPatientDetails(patient);
     setMonthlyOpen(true);
   }
@@ -741,7 +825,9 @@ export default function App() {
     if (!selectedAppointment) return;
 
     setAppointments((prev) =>
-      prev.map((appt) => (appt.id === selectedAppointment.id ? { ...appt, status } : appt))
+      prev.map((appt) =>
+        appt.id === selectedAppointment.id ? { ...appt, status } : appt
+      )
     );
 
     setSelectedAppointment((prev) => (prev ? { ...prev, status } : prev));
@@ -752,8 +838,22 @@ export default function App() {
     <div style={styles.page}>
       <style>{`
         * { box-sizing: border-box; }
-        body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: ${colors.bg}; color: ${colors.text}; }
-        button, input, select, textarea { font: inherit; }
+        html { scroll-behavior: smooth; }
+        body {
+          margin: 0;
+          font-family: Inter, Arial, Helvetica, sans-serif;
+          background:
+            radial-gradient(circle at top left, #f9fbff 0%, #f4f7fb 45%, #eef3fb 100%);
+          color: ${colors.text};
+        }
+        button, input, select, textarea {
+          font: inherit;
+        }
+        input:focus, select:focus, textarea:focus {
+          outline: none;
+          border-color: #94a3b8;
+          box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.15);
+        }
       `}</style>
 
       {toast.open ? (
@@ -770,47 +870,88 @@ export default function App() {
       ) : null}
 
       <div style={styles.container}>
-        <SectionCard>
-          <div style={styles.heroHeader}>
-            <div>
+        <SectionCard style={styles.heroCard}>
+          <div
+            style={{
+              ...styles.heroHeader,
+              flexDirection: isMobile ? "column" : "row",
+              alignItems: isMobile ? "stretch" : "center",
+            }}
+          >
+            <div style={{ flex: 1 }}>
               <p style={styles.overline}>Sistema de agenda profissional</p>
-              <h1 style={styles.title}>Agenda Terapêutica</h1>
-              <p style={styles.subtitle}>Fluxo estável para uso diário e foco forte em mobile.</p>
+              <h1
+                style={{
+                  ...styles.title,
+                  fontSize: isSmallMobile ? 28 : isMobile ? 34 : 38,
+                }}
+              >
+                Agenda Terapêutica
+              </h1>
+              <p style={styles.subtitle}>
+                Uma agenda clara, prática e elegante para acompanhar atendimentos,
+                rotina semanal e organização da clínica.
+              </p>
             </div>
-            <div style={styles.heroButtons}>
-              <button style={styles.primaryButton} onClick={() => setPatientDialogOpen(true)}>
+
+            <div
+              style={{
+                ...styles.heroButtons,
+                width: isMobile ? "100%" : "auto",
+                flexDirection: isMobile ? "column" : "row",
+              }}
+            >
+              <button
+                style={{ ...styles.primaryButton, width: isMobile ? "100%" : "auto" }}
+                onClick={() => setPatientDialogOpen(true)}
+              >
                 Novo paciente
               </button>
-              <button style={styles.secondaryButton} onClick={() => setAppointmentDialogOpen(true)}>
+              <button
+                style={{ ...styles.secondaryButton, width: isMobile ? "100%" : "auto" }}
+                onClick={() => setAppointmentDialogOpen(true)}
+              >
                 Novo agendamento
               </button>
-              <button style={styles.secondaryButton} onClick={() => setTab("locais")}>
+              <button
+                style={{ ...styles.secondaryButton, width: isMobile ? "100%" : "auto" }}
+                onClick={() => setTab("locais")}
+              >
                 Gerenciar locais
               </button>
             </div>
           </div>
         </SectionCard>
 
-        <div style={styles.statGrid}>
-          <SectionCard>
+        <div
+          style={{
+            ...styles.statGrid,
+            gridTemplateColumns: isSmallMobile
+              ? "1fr"
+              : isMobile
+              ? "1fr 1fr"
+              : "repeat(auto-fit, minmax(180px, 1fr))",
+          }}
+        >
+          <SectionCard style={styles.statCard}>
             <div style={styles.statLine}>
               <span>Atendimentos do dia</span>
               <strong>{stats.total}</strong>
             </div>
           </SectionCard>
-          <SectionCard>
+          <SectionCard style={styles.statCard}>
             <div style={styles.statLine}>
               <span>Confirmados</span>
               <strong>{stats.confirmed}</strong>
             </div>
           </SectionCard>
-          <SectionCard>
+          <SectionCard style={styles.statCard}>
             <div style={styles.statLine}>
               <span>Pendentes</span>
               <strong>{stats.pending}</strong>
             </div>
           </SectionCard>
-          <SectionCard>
+          <SectionCard style={styles.statCard}>
             <div style={styles.statLine}>
               <span>Mudanças</span>
               <strong>{stats.changes}</strong>
@@ -818,8 +959,13 @@ export default function App() {
           </SectionCard>
         </div>
 
-        <SectionCard>
-          <div style={styles.tabsWrap}>
+        <SectionCard style={styles.topTabsCard}>
+          <div
+            style={{
+              ...styles.tabsWrap,
+              gridTemplateColumns: "repeat(3, 1fr)",
+            }}
+          >
             {[
               { id: "agenda", label: "Agenda" },
               { id: "pacientes", label: "Pacientes" },
@@ -837,12 +983,19 @@ export default function App() {
         </SectionCard>
 
         {tab === "agenda" ? (
-          <div style={styles.mainGrid}>
-            <SectionCard>
-              <div style={{ display: "grid", gap: 16 }}>
+          <div
+            style={{
+              ...styles.mainGrid,
+              gridTemplateColumns: isMobile ? "1fr" : "1.5fr 0.85fr",
+            }}
+          >
+            <SectionCard style={{ order: isMobile ? 1 : 0 }}>
+              <div style={{ display: "grid", gap: 18 }}>
                 <div>
                   <h2 style={styles.sectionTitle}>Agenda</h2>
-                  <p style={styles.sectionDescription}>Visualização por dia, semana ou mês.</p>
+                  <p style={styles.sectionDescription}>
+                    Visualização por dia, semana ou mês.
+                  </p>
                 </div>
 
                 <div style={styles.viewSwitch}>
@@ -861,7 +1014,14 @@ export default function App() {
                   ))}
                 </div>
 
-                <div style={styles.formGrid2}>
+                <div
+                  style={{
+                    ...styles.formGrid2,
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(auto-fit, minmax(220px, 1fr))",
+                  }}
+                >
                   <div>
                     <label style={styles.label}>Data</label>
                     <input
@@ -870,7 +1030,9 @@ export default function App() {
                       value={selectedDate}
                       onChange={(e) => setSelectedDate(e.target.value)}
                     />
+                    <div style={styles.inlineHint}>{formatDateLong(selectedDate)}</div>
                   </div>
+
                   <div>
                     <label style={styles.label}>Buscar</label>
                     <input
@@ -887,11 +1049,15 @@ export default function App() {
                     {daySchedule.map((slot) => (
                       <div key={slot.hour} style={styles.slotCard}>
                         <div style={styles.rowBetween}>
-                          <strong>{slot.hour}</strong>
+                          <strong style={{ fontSize: 16 }}>{slot.hour}</strong>
                           <span
                             style={{
-                              color: slot.appointments.length > 0 ? colors.subtext : colors.successText,
+                              color:
+                                slot.appointments.length > 0
+                                  ? colors.subtext
+                                  : colors.successText,
                               fontSize: 12,
+                              fontWeight: 700,
                             }}
                           >
                             {slot.appointments.length > 0
@@ -901,7 +1067,7 @@ export default function App() {
                         </div>
 
                         {slot.appointments.length > 0 ? (
-                          <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                          <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
                             {slot.appointments.map((appt) => (
                               <button
                                 key={appt.id}
@@ -932,13 +1098,13 @@ export default function App() {
                 ) : null}
 
                 {calendarView === "week" ? (
-                  <div style={{ overflowX: "auto" }}>
+                  <div style={{ overflowX: "auto", paddingBottom: 6 }}>
                     <div
                       style={{
                         display: "grid",
                         gridTemplateColumns: "repeat(7, minmax(120px, 1fr))",
                         gap: 12,
-                        minWidth: isMobile ? 860 : 0,
+                        minWidth: isMobile ? 720 : 0,
                       }}
                     >
                       {weekDates.map((day) => {
@@ -952,6 +1118,7 @@ export default function App() {
                             style={{
                               ...styles.weekCard,
                               borderColor: isSelected ? colors.primary : colors.border,
+                              background: isSelected ? "#fbfdff" : colors.card,
                             }}
                           >
                             <button
@@ -963,11 +1130,12 @@ export default function App() {
                                   fontSize: 12,
                                   color: colors.subtext,
                                   textTransform: "uppercase",
+                                  letterSpacing: 0.6,
                                 }}
                               >
                                 {day.label}
                               </div>
-                              <div style={{ fontSize: 28, fontWeight: 700 }}>{day.dayNumber}</div>
+                              <div style={{ fontSize: 30, fontWeight: 800 }}>{day.dayNumber}</div>
                             </button>
 
                             {items.length === 0 ? (
@@ -988,7 +1156,9 @@ export default function App() {
                                     </div>
                                   </button>
                                 ))}
-                                <div style={{ color: colors.subtext, fontSize: 11 }}>{freeSummary}</div>
+                                <div style={{ color: colors.subtext, fontSize: 11 }}>
+                                  {freeSummary}
+                                </div>
                               </div>
                             )}
                           </div>
@@ -999,8 +1169,8 @@ export default function App() {
                 ) : null}
 
                 {calendarView === "month" ? (
-                  <div style={{ overflowX: "auto" }}>
-                    <div style={{ minWidth: isMobile ? 860 : 0 }}>
+                  <div style={{ overflowX: "auto", paddingBottom: 6 }}>
+                    <div style={{ minWidth: isMobile ? 720 : 0 }}>
                       <div
                         style={{
                           display: "grid",
@@ -1017,6 +1187,7 @@ export default function App() {
                               fontSize: 12,
                               color: colors.subtext,
                               fontWeight: 700,
+                              letterSpacing: 0.5,
                             }}
                           >
                             {label}
@@ -1042,6 +1213,7 @@ export default function App() {
                                 ...styles.monthCell,
                                 borderColor: isSelected ? colors.primary : colors.border,
                                 opacity: day.currentMonth ? 1 : 0.45,
+                                background: isSelected ? "#fbfdff" : colors.card,
                               }}
                               onClick={() => {
                                 setSelectedDate(day.iso);
@@ -1079,7 +1251,7 @@ export default function App() {
               </div>
             </SectionCard>
 
-            <SectionCard>
+            <SectionCard style={{ order: isMobile ? 2 : 0 }}>
               <h2 style={styles.sectionTitle}>Resumo do mês por paciente</h2>
               <p style={styles.sectionDescription}>
                 Veja quem mais atendeu no mês e toque para abrir os detalhes.
@@ -1091,7 +1263,12 @@ export default function App() {
                     <button
                       key={patient.name}
                       style={styles.summaryButton}
-                      onClick={() => openMonthly({ name: patient.name, appointments: patient.appointments })}
+                      onClick={() =>
+                        openMonthly({
+                          name: patient.name,
+                          appointments: patient.appointments,
+                        })
+                      }
                     >
                       <div style={styles.rowBetween}>
                         <div style={{ textAlign: "left" }}>
@@ -1118,9 +1295,19 @@ export default function App() {
         {tab === "pacientes" ? (
           <SectionCard>
             <h2 style={styles.sectionTitle}>Pacientes</h2>
-            <p style={styles.sectionDescription}>Cadastro simples com frequência e observações.</p>
+            <p style={styles.sectionDescription}>
+              Cadastro simples com frequência e observações.
+            </p>
 
-            <div style={{ ...styles.patientGrid, marginTop: 16 }}>
+            <div
+              style={{
+                ...styles.patientGrid,
+                marginTop: 16,
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(auto-fit, minmax(240px, 1fr))",
+              }}
+            >
               {patients.map((patient) => (
                 <div key={patient.id} style={styles.patientCard}>
                   <div style={styles.rowBetween}>
@@ -1140,7 +1327,8 @@ export default function App() {
                     <div>Telefone: {patient.phone}</div>
                     <div>
                       Local:{" "}
-                      {locations.find((l) => l.id === patient.defaultLocationId)?.name || "Sem local"}
+                      {locations.find((l) => l.id === patient.defaultLocationId)?.name ||
+                        "Sem local"}
                     </div>
                   </div>
 
@@ -1239,11 +1427,19 @@ export default function App() {
                 <strong>Plano:</strong> {selectedAppointment.recurrenceLabel || "Único"}
               </div>
               <div>
-                <strong>Observações:</strong> {selectedAppointment.notes || "Sem observações"}
+                <strong>Observações:</strong>{" "}
+                {selectedAppointment.notes || "Sem observações"}
               </div>
             </div>
 
-            <div style={styles.formGrid2}>
+            <div
+              style={{
+                ...styles.formGrid2,
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(auto-fit, minmax(220px, 1fr))",
+              }}
+            >
               <button style={styles.secondaryButton} onClick={openRescheduleDialog}>
                 Reagendar
               </button>
@@ -1277,14 +1473,23 @@ export default function App() {
         description="Altere data, horário, local e observações."
       >
         <div style={{ display: "grid", gap: 14 }}>
-          <div style={styles.formGrid2}>
+          <div
+            style={{
+              ...styles.formGrid2,
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(auto-fit, minmax(220px, 1fr))",
+            }}
+          >
             <div>
               <label style={styles.label}>Nova data</label>
               <input
                 style={styles.input}
                 type="date"
                 value={rescheduleForm.date}
-                onChange={(e) => setRescheduleForm({ ...rescheduleForm, date: e.target.value })}
+                onChange={(e) =>
+                  setRescheduleForm({ ...rescheduleForm, date: e.target.value })
+                }
               />
             </div>
             <div>
@@ -1293,7 +1498,9 @@ export default function App() {
                 style={styles.input}
                 type="time"
                 value={rescheduleForm.time}
-                onChange={(e) => setRescheduleForm({ ...rescheduleForm, time: e.target.value })}
+                onChange={(e) =>
+                  setRescheduleForm({ ...rescheduleForm, time: e.target.value })
+                }
               />
             </div>
           </div>
@@ -1303,7 +1510,9 @@ export default function App() {
             <select
               style={styles.input}
               value={rescheduleForm.locationId}
-              onChange={(e) => setRescheduleForm({ ...rescheduleForm, locationId: e.target.value })}
+              onChange={(e) =>
+                setRescheduleForm({ ...rescheduleForm, locationId: e.target.value })
+              }
             >
               {locations.map((location) => (
                 <option key={location.id} value={location.id}>
@@ -1318,7 +1527,9 @@ export default function App() {
             <textarea
               style={styles.textarea}
               value={rescheduleForm.notes}
-              onChange={(e) => setRescheduleForm({ ...rescheduleForm, notes: e.target.value })}
+              onChange={(e) =>
+                setRescheduleForm({ ...rescheduleForm, notes: e.target.value })
+              }
             />
           </div>
 
@@ -1358,7 +1569,14 @@ export default function App() {
             />
           </div>
 
-          <div style={styles.formGrid2}>
+          <div
+            style={{
+              ...styles.formGrid2,
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(auto-fit, minmax(220px, 1fr))",
+            }}
+          >
             <div>
               <label style={styles.label}>Local padrão</label>
               <select
@@ -1381,7 +1599,9 @@ export default function App() {
               <select
                 style={styles.input}
                 value={newPatient.frequency}
-                onChange={(e) => setNewPatient({ ...newPatient, frequency: e.target.value })}
+                onChange={(e) =>
+                  setNewPatient({ ...newPatient, frequency: e.target.value })
+                }
               >
                 <option>Semanal</option>
                 <option>Quinzenal</option>
@@ -1435,7 +1655,9 @@ export default function App() {
             <select
               style={styles.input}
               value={newAppointment.patientId}
-              onChange={(e) => setNewAppointment({ ...newAppointment, patientId: e.target.value })}
+              onChange={(e) =>
+                setNewAppointment({ ...newAppointment, patientId: e.target.value })
+              }
             >
               {patients.map((patient) => (
                 <option key={patient.id} value={patient.id}>
@@ -1445,7 +1667,14 @@ export default function App() {
             </select>
           </div>
 
-          <div style={styles.formGrid2}>
+          <div
+            style={{
+              ...styles.formGrid2,
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(auto-fit, minmax(220px, 1fr))",
+            }}
+          >
             <div>
               <label style={styles.label}>Tipo</label>
               <select
@@ -1478,13 +1707,22 @@ export default function App() {
             </div>
           </div>
 
-          <div style={styles.formGrid2}>
+          <div
+            style={{
+              ...styles.formGrid2,
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(auto-fit, minmax(220px, 1fr))",
+            }}
+          >
             <div>
               <label style={styles.label}>Local</label>
               <select
                 style={styles.input}
                 value={newAppointment.locationId}
-                onChange={(e) => setNewAppointment({ ...newAppointment, locationId: e.target.value })}
+                onChange={(e) =>
+                  setNewAppointment({ ...newAppointment, locationId: e.target.value })
+                }
               >
                 {locations.map((location) => (
                   <option key={location.id} value={location.id}>
@@ -1509,7 +1747,14 @@ export default function App() {
             </div>
           </div>
 
-          <div style={styles.formGrid2}>
+          <div
+            style={{
+              ...styles.formGrid2,
+              gridTemplateColumns: isMobile
+                ? "1fr"
+                : "repeat(auto-fit, minmax(220px, 1fr))",
+            }}
+          >
             <div>
               <label style={styles.label}>
                 {newAppointment.scheduleMode === "single" ? "Data" : "Data de início"}
@@ -1529,14 +1774,24 @@ export default function App() {
                 type="number"
                 value={newAppointment.duration}
                 onChange={(e) =>
-                  setNewAppointment({ ...newAppointment, duration: Number(e.target.value) })
+                  setNewAppointment({
+                    ...newAppointment,
+                    duration: Number(e.target.value),
+                  })
                 }
               />
             </div>
           </div>
 
           {newAppointment.scheduleMode === "single" ? (
-            <div style={styles.formGrid2}>
+            <div
+              style={{
+                ...styles.formGrid2,
+                gridTemplateColumns: isMobile
+                  ? "1fr"
+                  : "repeat(auto-fit, minmax(220px, 1fr))",
+              }}
+            >
               <div>
                 <label style={styles.label}>Horário</label>
                 <input
@@ -1546,11 +1801,20 @@ export default function App() {
                   onChange={(e) => setNewAppointment({ ...newAppointment, time: e.target.value })}
                 />
               </div>
-              <div style={styles.infoBox}>Será criado 1 agendamento único para este paciente.</div>
+              <div style={styles.infoBox}>
+                Será criado 1 agendamento único para este paciente.
+              </div>
             </div>
           ) : (
             <div style={styles.recurringBox}>
-              <div style={styles.formGrid2}>
+              <div
+                style={{
+                  ...styles.formGrid2,
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "repeat(auto-fit, minmax(220px, 1fr))",
+                }}
+              >
                 <div>
                   <label style={styles.label}>Quantidade de semanas</label>
                   <input
@@ -1566,14 +1830,25 @@ export default function App() {
                     }
                   />
                 </div>
+
                 <div style={styles.infoBox}>
                   O sistema criará automaticamente os atendimentos da rotina semanal.
                 </div>
               </div>
 
               <div>
-                <div style={{ fontWeight: 700, marginBottom: 10 }}>Dias e horários da rotina</div>
-                <div style={styles.recurringGrid}>
+                <div style={{ fontWeight: 700, marginBottom: 10 }}>
+                  Dias e horários da rotina
+                </div>
+
+                <div
+                  style={{
+                    ...styles.recurringGrid,
+                    gridTemplateColumns: isMobile
+                      ? "1fr"
+                      : "repeat(auto-fit, minmax(230px, 1fr))",
+                  }}
+                >
                   {newAppointment.recurrenceDays.map((day) => (
                     <div key={day.weekday} style={styles.recurringDayCard}>
                       <button
@@ -1586,7 +1861,14 @@ export default function App() {
                       {day.selected ? (
                         <div style={{ display: "grid", gap: 8 }}>
                           {day.times.map((time, index) => (
-                            <div key={`${day.weekday}-${index}`} style={{ display: "flex", gap: 8 }}>
+                            <div
+                              key={`${day.weekday}-${index}`}
+                              style={{
+                                display: "grid",
+                                gap: 8,
+                                gridTemplateColumns: isMobile ? "1fr" : "1fr auto",
+                              }}
+                            >
                               <input
                                 style={styles.input}
                                 type="time"
@@ -1645,7 +1927,10 @@ export default function App() {
           </div>
 
           <div style={styles.footerButtons}>
-            <button style={styles.secondaryButton} onClick={() => setAppointmentDialogOpen(false)}>
+            <button
+              style={styles.secondaryButton}
+              onClick={() => setAppointmentDialogOpen(false)}
+            >
               Fechar
             </button>
             <button style={styles.primaryButton} onClick={createAppointment}>
@@ -1672,34 +1957,50 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gap: 20,
   },
+  heroCard: {
+    background:
+      "linear-gradient(135deg, rgba(255,255,255,0.98) 0%, rgba(247,250,255,0.98) 100%)",
+  },
+  topTabsCard: {
+    padding: 10,
+    background: "rgba(255,255,255,0.9)",
+  },
   card: {
     background: colors.card,
-    borderRadius: 24,
+    borderRadius: 26,
     border: `1px solid ${colors.border}`,
-    padding: 18,
-    boxShadow: "0 2px 10px rgba(15,23,42,0.03)",
+    padding: 20,
+    boxShadow: colors.shadow,
+    backdropFilter: "blur(6px)",
   },
   heroHeader: {
     display: "flex",
     justifyContent: "space-between",
-    gap: 16,
+    gap: 18,
     alignItems: "center",
     flexWrap: "wrap",
   },
   overline: {
     margin: 0,
     color: colors.subtext,
-    fontSize: 14,
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
   },
   title: {
-    margin: "8px 0 0",
-    fontSize: 32,
+    margin: "10px 0 0",
+    fontSize: 38,
+    lineHeight: 1.05,
     color: colors.text,
+    fontWeight: 800,
   },
   subtitle: {
-    margin: "8px 0 0",
+    margin: "10px 0 0",
     color: colors.subtext,
-    fontSize: 14,
+    fontSize: 15,
+    lineHeight: 1.5,
+    maxWidth: 620,
   },
   heroButtons: {
     display: "flex",
@@ -1711,17 +2012,19 @@ const styles: Record<string, React.CSSProperties> = {
     color: colors.primaryText,
     border: "none",
     borderRadius: 16,
-    padding: "12px 16px",
+    padding: "13px 18px",
     cursor: "pointer",
     fontWeight: 700,
+    boxShadow: "0 12px 24px rgba(15, 23, 42, 0.18)",
   },
   secondaryButton: {
-    background: colors.card,
+    background: "#ffffff",
     color: colors.text,
-    border: `1px solid ${colors.border}`,
+    border: `1px solid ${colors.borderStrong}`,
     borderRadius: 16,
-    padding: "12px 16px",
+    padding: "13px 18px",
     cursor: "pointer",
+    fontWeight: 600,
   },
   iconButton: {
     background: colors.card,
@@ -1735,11 +2038,16 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
     gap: 12,
   },
+  statCard: {
+    padding: 16,
+    background: "rgba(255,255,255,0.92)",
+  },
   statLine: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
     color: colors.subtext,
+    fontSize: 14,
   },
   tabsWrap: {
     display: "grid",
@@ -1750,8 +2058,8 @@ const styles: Record<string, React.CSSProperties> = {
     background: colors.card,
     color: colors.text,
     border: `1px solid ${colors.border}`,
-    borderRadius: 14,
-    padding: "12px 14px",
+    borderRadius: 16,
+    padding: "14px 14px",
     cursor: "pointer",
     fontWeight: 700,
   },
@@ -1759,39 +2067,44 @@ const styles: Record<string, React.CSSProperties> = {
     background: colors.primary,
     color: colors.primaryText,
     border: `1px solid ${colors.primary}`,
-    borderRadius: 14,
-    padding: "12px 14px",
+    borderRadius: 16,
+    padding: "14px 14px",
     cursor: "pointer",
     fontWeight: 700,
+    boxShadow: "0 10px 20px rgba(15, 23, 42, 0.16)",
   },
   mainGrid: {
     display: "grid",
-    gridTemplateColumns: "1.4fr 0.8fr",
+    gridTemplateColumns: "1.5fr 0.85fr",
     gap: 20,
+    alignItems: "start",
   },
   sectionTitle: {
     margin: 0,
     fontSize: 24,
     color: colors.text,
+    fontWeight: 800,
   },
   sectionDescription: {
     margin: "8px 0 0",
     color: colors.subtext,
     fontSize: 14,
+    lineHeight: 1.5,
   },
   viewSwitch: {
     display: "grid",
     gridTemplateColumns: "repeat(3, 1fr)",
     gap: 8,
-    background: colors.soft,
+    background: colors.softBlue,
     padding: 6,
-    borderRadius: 18,
+    borderRadius: 20,
+    border: `1px solid ${colors.border}`,
   },
   viewButton: {
-    background: colors.card,
+    background: "rgba(255,255,255,0.9)",
     color: colors.text,
     border: `1px solid ${colors.border}`,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: "12px 10px",
     cursor: "pointer",
     fontWeight: 700,
@@ -1800,10 +2113,11 @@ const styles: Record<string, React.CSSProperties> = {
     background: colors.primary,
     color: colors.primaryText,
     border: `1px solid ${colors.primary}`,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: "12px 10px",
     cursor: "pointer",
     fontWeight: 700,
+    boxShadow: "0 10px 20px rgba(15, 23, 42, 0.16)",
   },
   formGrid2: {
     display: "grid",
@@ -1817,29 +2131,35 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 700,
   },
+  inlineHint: {
+    fontSize: 12,
+    color: colors.subtext,
+    marginTop: 6,
+    paddingLeft: 2,
+  },
   input: {
     width: "100%",
-    borderRadius: 14,
-    border: `1px solid ${colors.border}`,
-    padding: "12px 14px",
+    borderRadius: 16,
+    border: `1px solid ${colors.borderStrong}`,
+    padding: "13px 14px",
     background: colors.card,
     color: colors.text,
   },
   textarea: {
     width: "100%",
     minHeight: 110,
-    borderRadius: 14,
-    border: `1px solid ${colors.border}`,
-    padding: "12px 14px",
+    borderRadius: 16,
+    border: `1px solid ${colors.borderStrong}`,
+    padding: "13px 14px",
     background: colors.card,
     color: colors.text,
     resize: "vertical",
   },
   slotCard: {
-    borderRadius: 18,
+    borderRadius: 20,
     border: `1px solid ${colors.border}`,
     padding: 14,
-    background: colors.card,
+    background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
   },
   rowBetween: {
     display: "flex",
@@ -1849,28 +2169,29 @@ const styles: Record<string, React.CSSProperties> = {
   },
   freeBox: {
     marginTop: 10,
-    borderRadius: 14,
+    borderRadius: 16,
     border: `1px dashed ${colors.freeBorder}`,
     background: colors.freeBg,
     color: colors.successText,
-    padding: 12,
+    padding: 13,
     fontSize: 13,
     textAlign: "center",
+    fontWeight: 600,
   },
   appointmentButton: {
     width: "100%",
-    background: colors.soft,
+    background: "linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%)",
     border: `1px solid ${colors.border}`,
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 12,
     cursor: "pointer",
   },
   weekCard: {
-    borderRadius: 18,
+    borderRadius: 20,
     border: `1px solid ${colors.border}`,
     padding: 12,
     background: colors.card,
-    minHeight: 180,
+    minHeight: 190,
   },
   dayHeaderButton: {
     background: "transparent",
@@ -1883,16 +2204,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   appointmentMini: {
     width: "100%",
-    background: colors.soft,
+    background: "linear-gradient(180deg, #f8fbff 0%, #f3f7fc 100%)",
     border: `1px solid ${colors.border}`,
-    borderRadius: 12,
-    padding: 8,
+    borderRadius: 14,
+    padding: 9,
     cursor: "pointer",
     textAlign: "left",
   },
   monthCell: {
     minHeight: 170,
-    borderRadius: 18,
+    borderRadius: 20,
     border: `1px solid ${colors.border}`,
     background: colors.card,
     padding: 10,
@@ -1900,17 +2221,18 @@ const styles: Record<string, React.CSSProperties> = {
     textAlign: "left",
   },
   monthTime: {
-    background: colors.soft,
-    borderRadius: 10,
+    background: "linear-gradient(180deg, #f8fbff 0%, #f2f6fc 100%)",
+    borderRadius: 12,
     padding: "6px 8px",
     fontSize: 11,
+    border: `1px solid ${colors.border}`,
   },
   summaryButton: {
     width: "100%",
-    background: colors.soft,
+    background: "linear-gradient(180deg, #f8fbff 0%, #f2f6fc 100%)",
     border: `1px solid ${colors.border}`,
-    borderRadius: 16,
-    padding: 12,
+    borderRadius: 18,
+    padding: 14,
     cursor: "pointer",
   },
   empty: {
@@ -1927,37 +2249,40 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 14,
   },
   patientCard: {
-    borderRadius: 18,
+    borderRadius: 20,
     border: `1px solid ${colors.border}`,
     padding: 16,
-    background: colors.card,
+    background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
   },
   locationRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    borderRadius: 16,
+    borderRadius: 18,
     border: `1px solid ${colors.border}`,
     padding: 14,
+    background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
   },
   overlay: {
     position: "fixed",
     inset: 0,
-    background: "rgba(15,23,42,0.35)",
+    background: "rgba(15,23,42,0.38)",
     display: "flex",
     justifyContent: "center",
     alignItems: "center",
     padding: 16,
     zIndex: 1000,
+    backdropFilter: "blur(4px)",
   },
   modal: {
     width: "min(920px, 100%)",
     maxHeight: "90vh",
     overflowY: "auto",
     background: colors.card,
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 26,
+    padding: 22,
     border: `1px solid ${colors.border}`,
+    boxShadow: "0 24px 48px rgba(15,23,42,0.14)",
   },
   footerButtons: {
     display: "flex",
@@ -1970,19 +2295,21 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
     color: colors.text,
     fontSize: 14,
+    lineHeight: 1.5,
   },
   infoBox: {
-    borderRadius: 16,
+    borderRadius: 18,
     border: `1px solid ${colors.border}`,
-    background: colors.soft,
+    background: "linear-gradient(180deg, #f8fbff 0%, #f2f6fc 100%)",
     padding: 14,
     color: colors.subtext,
     fontSize: 14,
+    lineHeight: 1.5,
   },
   recurringBox: {
-    borderRadius: 18,
+    borderRadius: 20,
     border: `1px solid ${colors.border}`,
-    background: colors.soft,
+    background: colors.softBlue,
     padding: 14,
     display: "grid",
     gap: 14,
@@ -1993,7 +2320,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 12,
   },
   recurringDayCard: {
-    borderRadius: 16,
+    borderRadius: 18,
     border: `1px solid ${colors.border}`,
     background: colors.card,
     padding: 12,
@@ -2003,7 +2330,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: colors.soft,
     color: colors.text,
     border: `1px solid ${colors.border}`,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: "10px 12px",
     cursor: "pointer",
     textAlign: "left",
@@ -2015,20 +2342,22 @@ const styles: Record<string, React.CSSProperties> = {
     background: colors.primary,
     color: colors.primaryText,
     border: `1px solid ${colors.primary}`,
-    borderRadius: 12,
+    borderRadius: 14,
     padding: "10px 12px",
     cursor: "pointer",
     textAlign: "left",
     fontWeight: 700,
     marginBottom: 10,
+    boxShadow: "0 10px 20px rgba(15, 23, 42, 0.14)",
   },
   smallDanger: {
     background: colors.dangerBg,
     color: colors.dangerText,
     border: "1px solid #fecaca",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: "0 12px",
     cursor: "pointer",
+    minHeight: 46,
   },
   badge: {
     display: "inline-flex",
@@ -2038,6 +2367,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "6px 10px",
     fontSize: 12,
     fontWeight: 700,
+    whiteSpace: "nowrap",
   },
   toast: {
     position: "fixed",
@@ -2049,5 +2379,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 16,
     padding: "12px 16px",
     boxShadow: "0 10px 30px rgba(15,23,42,0.12)",
+    maxWidth: "calc(100vw - 24px)",
   },
 };
