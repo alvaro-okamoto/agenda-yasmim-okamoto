@@ -65,15 +65,13 @@ type ReturnTarget = null | "monthly" | "patient" | "location";
 
 const colors = {
   bg: "#f5f7fb",
-  bgAccent: "#edf3fb",
   card: "#ffffff",
-  cardSoft: "#f8fbff",
+  cardSoft: "#fbfdff",
   border: "#d9e4f1",
   borderStrong: "#c7d5e6",
   text: "#0f172a",
   subtext: "#61748f",
   primary: "#0f172a",
-  primarySoft: "#1f2b44",
   primaryText: "#ffffff",
   soft: "#f4f8fd",
   softBlue: "#eef5ff",
@@ -197,6 +195,46 @@ const hourSlots = [
   "17:00",
   "18:00",
 ];
+
+const locationTheme: Record<
+  string,
+  {
+    bg: string;
+    border: string;
+    text: string;
+    accent: string;
+  }
+> = {
+  l1: {
+    bg: "#eff6ff",
+    border: "#bfdbfe",
+    text: "#1d4ed8",
+    accent: "#dbeafe",
+  },
+  l2: {
+    bg: "#f5f3ff",
+    border: "#ddd6fe",
+    text: "#6d28d9",
+    accent: "#ede9fe",
+  },
+  l3: {
+    bg: "#fff7ed",
+    border: "#fed7aa",
+    text: "#c2410c",
+    accent: "#ffedd5",
+  },
+  default: {
+    bg: "#f8fafc",
+    border: "#dbe2ea",
+    text: "#475569",
+    accent: "#f1f5f9",
+  },
+};
+
+function getLocationTheme(locationId?: string) {
+  if (!locationId) return locationTheme.default;
+  return locationTheme[locationId] || locationTheme.default;
+}
 
 function nextId(prefix: string) {
   return `${prefix}${Math.random().toString(36).slice(2, 8)}`;
@@ -593,8 +631,9 @@ export default function App() {
       acc[key].appointments.push(appt);
       acc[key].total += 1;
       if (appt.status === "Realizado") acc[key].completed += 1;
-      if (appt.status === "Agendado" || appt.status === "Confirmado")
+      if (appt.status === "Agendado" || appt.status === "Confirmado") {
         acc[key].pending += 1;
+      }
 
       acc[key].appointments.sort((a, b) =>
         `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)
@@ -642,9 +681,7 @@ export default function App() {
 
   const selectedLocationPatients = useMemo(() => {
     if (!selectedLocation) return [];
-    const ids = Array.from(
-      new Set(selectedLocationAppointments.map((appt) => appt.patientId))
-    );
+    const ids = Array.from(new Set(selectedLocationAppointments.map((appt) => appt.patientId)));
     return ids
       .map((id) => patients.find((patient) => patient.id === id))
       .filter(Boolean) as Patient[];
@@ -993,6 +1030,9 @@ export default function App() {
   function confirmDeleteLocation() {
     if (!deleteLocationTarget) return;
 
+    const fallbackLocationId =
+      locations.find((location) => location.id !== deleteLocationTarget.id)?.id || "";
+
     setLocations((prev) =>
       prev.filter((location) => location.id !== deleteLocationTarget.id)
     );
@@ -1000,7 +1040,7 @@ export default function App() {
     setPatients((prev) =>
       prev.map((patient) =>
         patient.defaultLocationId === deleteLocationTarget.id
-          ? { ...patient, defaultLocationId: locations[0]?.id || "" }
+          ? { ...patient, defaultLocationId: fallbackLocationId }
           : patient
       )
     );
@@ -1248,26 +1288,33 @@ export default function App() {
 
                         {slot.appointments.length > 0 ? (
                           <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                            {slot.appointments.map((appt) => (
-                              <button
-                                key={appt.id}
-                                style={styles.appointmentButton}
-                                onClick={() => openAppointment(appt)}
-                              >
-                                <div style={styles.rowBetween}>
-                                  <div style={{ textAlign: "left" }}>
-                                    <div style={{ fontWeight: 700 }}>{appt.patient?.name}</div>
-                                    <div style={{ color: colors.subtext, fontSize: 13 }}>
-                                      {appt.location?.name} • {appt.type}
+                            {slot.appointments.map((appt) => {
+                              const theme = getLocationTheme(appt.locationId);
+                              return (
+                                <button
+                                  key={appt.id}
+                                  style={{
+                                    ...styles.appointmentButton,
+                                    background: theme.bg,
+                                    borderColor: theme.border,
+                                  }}
+                                  onClick={() => openAppointment(appt)}
+                                >
+                                  <div style={styles.rowBetween}>
+                                    <div style={{ textAlign: "left" }}>
+                                      <div style={{ fontWeight: 700 }}>{appt.patient?.name}</div>
+                                      <div style={{ color: colors.subtext, fontSize: 13 }}>
+                                        {appt.location?.name} • {appt.type}
+                                      </div>
+                                      <div style={{ color: colors.subtext, fontSize: 12 }}>
+                                        {appt.recurrenceLabel || "Único"}
+                                      </div>
                                     </div>
-                                    <div style={{ color: colors.subtext, fontSize: 12 }}>
-                                      {appt.recurrenceLabel || "Único"}
-                                    </div>
+                                    <Badge tone={statusTone(appt.status)}>{appt.status}</Badge>
                                   </div>
-                                  <Badge tone={statusTone(appt.status)}>{appt.status}</Badge>
-                                </div>
-                              </button>
-                            ))}
+                                </button>
+                              );
+                            })}
                           </div>
                         ) : (
                           <div style={styles.freeBox}>Horário disponível</div>
@@ -1303,7 +1350,10 @@ export default function App() {
                           >
                             <button
                               style={{ ...styles.dayHeaderButton, color: colors.text }}
-                              onClick={() => setSelectedDate(day.iso)}
+                              onClick={() => {
+                                setSelectedDate(day.iso);
+                                setCalendarView("day");
+                              }}
                             >
                               <div
                                 style={{
@@ -1322,20 +1372,27 @@ export default function App() {
                               <div style={styles.freeBox}>Livre o dia todo</div>
                             ) : (
                               <div style={{ display: "grid", gap: 8 }}>
-                                {items.map((appt) => (
-                                  <button
-                                    key={appt.id}
-                                    style={styles.appointmentMini}
-                                    onClick={() => openAppointment(appt)}
-                                  >
-                                    <div style={{ fontWeight: 700, fontSize: 12 }}>
-                                      {appt.time} • {appt.patient?.name}
-                                    </div>
-                                    <div style={{ color: colors.subtext, fontSize: 11 }}>
-                                      {appt.location?.name}
-                                    </div>
-                                  </button>
-                                ))}
+                                {items.map((appt) => {
+                                  const theme = getLocationTheme(appt.locationId);
+                                  return (
+                                    <button
+                                      key={appt.id}
+                                      style={{
+                                        ...styles.appointmentMini,
+                                        background: theme.bg,
+                                        borderColor: theme.border,
+                                      }}
+                                      onClick={() => openAppointment(appt)}
+                                    >
+                                      <div style={{ fontWeight: 700, fontSize: 12 }}>
+                                        {appt.time} • {appt.patient?.name}
+                                      </div>
+                                      <div style={{ color: colors.subtext, fontSize: 11 }}>
+                                        {appt.location?.name}
+                                      </div>
+                                    </button>
+                                  );
+                                })}
                                 <div style={{ color: colors.subtext, fontSize: 11 }}>
                                   {freeSummary}
                                 </div>
@@ -1409,11 +1466,22 @@ export default function App() {
                                 <div style={styles.freeBox}>Livre</div>
                               ) : (
                                 <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
-                                  {items.slice(0, 3).map((appt) => (
-                                    <div key={appt.id} style={styles.monthTime}>
-                                      {appt.time}
-                                    </div>
-                                  ))}
+                                  {items.slice(0, 3).map((appt) => {
+                                    const theme = getLocationTheme(appt.locationId);
+                                    return (
+                                      <div
+                                        key={appt.id}
+                                        style={{
+                                          ...styles.monthEventPill,
+                                          background: theme.bg,
+                                          borderColor: theme.border,
+                                          color: theme.text,
+                                        }}
+                                      >
+                                        <span>{appt.time}</span>
+                                      </div>
+                                    );
+                                  })}
                                   {items.length > 3 ? (
                                     <div style={{ fontSize: 11, color: colors.subtext }}>
                                       + {items.length - 3} horário(s)
@@ -1422,6 +1490,28 @@ export default function App() {
                                 </div>
                               )}
                             </button>
+                          );
+                        })}
+                      </div>
+
+                      <div style={styles.monthLegend}>
+                        <div style={styles.monthLegendItem}>
+                          <span style={{ ...styles.legendDot, background: colors.freeBg, borderColor: colors.freeBorder }} />
+                          Livre
+                        </div>
+                        {locations.map((location) => {
+                          const theme = getLocationTheme(location.id);
+                          return (
+                            <div key={location.id} style={styles.monthLegendItem}>
+                              <span
+                                style={{
+                                  ...styles.legendDot,
+                                  background: theme.bg,
+                                  borderColor: theme.border,
+                                }}
+                              />
+                              {location.name}
+                            </div>
                           );
                         })}
                       </div>
@@ -1555,11 +1645,16 @@ export default function App() {
                 const patientNames = Array.from(
                   new Set(locationAppointments.map((a) => a.patient?.name).filter(Boolean))
                 );
+                const theme = getLocationTheme(loc.id);
 
                 return (
                   <button
                     key={loc.id}
-                    style={styles.locationButton}
+                    style={{
+                      ...styles.locationButton,
+                      background: theme.bg,
+                      borderColor: theme.border,
+                    }}
                     onClick={() => openLocation(loc)}
                   >
                     <div style={styles.rowBetween}>
@@ -1896,9 +1991,17 @@ export default function App() {
                 const linkedPatients = Array.from(
                   new Set(linkedAppointments.map((appt) => appt.patient?.name).filter(Boolean))
                 );
+                const theme = getLocationTheme(location.id);
 
                 return (
-                  <div key={location.id} style={styles.manageLocationCard}>
+                  <div
+                    key={location.id}
+                    style={{
+                      ...styles.manageLocationCard,
+                      background: theme.bg,
+                      borderColor: theme.border,
+                    }}
+                  >
                     <div style={styles.rowBetween}>
                       <div style={{ textAlign: "left" }}>
                         <div style={{ fontWeight: 700 }}>{location.name}</div>
@@ -2707,7 +2810,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   appointmentButton: {
     width: "100%",
-    background: "linear-gradient(180deg, #f9fbff 0%, #f2f7fd 100%)",
     border: `1px solid ${colors.border}`,
     borderRadius: 18,
     padding: 12,
@@ -2731,7 +2833,6 @@ const styles: Record<string, React.CSSProperties> = {
   },
   appointmentMini: {
     width: "100%",
-    background: "linear-gradient(180deg, #ffffff 0%, #f4f8fd 100%)",
     border: `1px solid ${colors.border}`,
     borderRadius: 16,
     padding: 9,
@@ -2747,12 +2848,37 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     textAlign: "left",
   },
-  monthTime: {
-    background: "linear-gradient(180deg, #ffffff 0%, #f2f6fc 100%)",
+  monthEventPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
     borderRadius: 12,
+    border: "1px solid",
     padding: "6px 8px",
     fontSize: 11,
-    border: `1px solid ${colors.border}`,
+    fontWeight: 700,
+  },
+  monthLegend: {
+    display: "flex",
+    gap: 14,
+    flexWrap: "wrap",
+    marginTop: 14,
+    paddingTop: 10,
+  },
+  monthLegendItem: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    color: colors.subtext,
+    fontSize: 12,
+    fontWeight: 600,
+  },
+  legendDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    border: "1px solid",
+    display: "inline-block",
   },
   summaryButton: {
     width: "100%",
@@ -2789,7 +2915,6 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 20,
     border: `1px solid ${colors.border}`,
     padding: 16,
-    background: "linear-gradient(180deg, #ffffff 0%, #fbfdff 100%)",
     cursor: "pointer",
     textAlign: "left",
   },
@@ -2811,7 +2936,6 @@ const styles: Record<string, React.CSSProperties> = {
   manageLocationCard: {
     borderRadius: 18,
     border: `1px solid ${colors.border}`,
-    background: "#ffffff",
     padding: 14,
   },
   manageActions: {
