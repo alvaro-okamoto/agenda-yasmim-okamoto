@@ -29,10 +29,47 @@ type Appointment = {
   recurrenceLabel?: string;
 };
 
+type CompanyBlock = {
+  id: string;
+  companyName: string;
+  locationId: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+  notes: string;
+  active: boolean;
+};
+
 type EnrichedAppointment = Appointment & {
   patient?: Patient;
   location?: Location;
 };
+
+type AgendaEvent =
+  | {
+      id: string;
+      kind: "appointment";
+      date: string;
+      startTime: string;
+      endTime: string;
+      title: string;
+      subtitle: string;
+      locationId: string;
+      status?: string;
+      sourceAppointment?: EnrichedAppointment;
+    }
+  | {
+      id: string;
+      kind: "company";
+      date: string;
+      startTime: string;
+      endTime: string;
+      title: string;
+      subtitle: string;
+      locationId: string;
+      notes?: string;
+      sourceCompany?: CompanyBlock;
+    };
 
 type RecurrenceDay = {
   weekday: number;
@@ -63,6 +100,16 @@ type ToastState = {
 
 type ReturnTarget = null | "monthly" | "patient" | "location";
 
+type CompanyFormState = {
+  companyName: string;
+  locationId: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+  notes: string;
+  active: boolean;
+};
+
 const colors = {
   bg: "#f5f7fb",
   card: "#ffffff",
@@ -83,6 +130,9 @@ const colors = {
   freeBorder: "#bfeccf",
   warningBg: "#fff7ed",
   warningText: "#c2410c",
+  companyBg: "#f8f1ff",
+  companyBorder: "#e9d5ff",
+  companyText: "#7c3aed",
   shadow: "0 18px 40px rgba(15, 23, 42, 0.08)",
 };
 
@@ -173,7 +223,41 @@ const appointmentsSeed: Appointment[] = [
   },
 ];
 
+const companyBlocksSeed: CompanyBlock[] = [
+  {
+    id: "c1",
+    companyName: "Consultório Y",
+    locationId: "l2",
+    weekday: 3,
+    startTime: "13:00",
+    endTime: "18:00",
+    notes: "Prestação de serviço fixa",
+    active: true,
+  },
+  {
+    id: "c2",
+    companyName: "Consultório H",
+    locationId: "l1",
+    weekday: 1,
+    startTime: "08:00",
+    endTime: "11:30",
+    notes: "Atendimento fixo semanal",
+    active: true,
+  },
+];
+
 const weekdayLabels = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const weekdayFullLabels = [
+  "",
+  "Segunda",
+  "Terça",
+  "Quarta",
+  "Quinta",
+  "Sexta",
+  "Sábado",
+  "Domingo",
+];
+
 const recurrenceWeekdaysSeed: RecurrenceDay[] = [
   { weekday: 1, label: "Segunda", selected: false, times: ["08:00"] },
   { weekday: 2, label: "Terça", selected: false, times: ["08:00"] },
@@ -182,6 +266,7 @@ const recurrenceWeekdaysSeed: RecurrenceDay[] = [
   { weekday: 5, label: "Sexta", selected: false, times: ["08:00"] },
   { weekday: 6, label: "Sábado", selected: false, times: ["08:00"] },
 ];
+
 const hourSlots = [
   "08:00",
   "09:00",
@@ -202,32 +287,27 @@ const locationTheme: Record<
     bg: string;
     border: string;
     text: string;
-    accent: string;
   }
 > = {
   l1: {
     bg: "#eff6ff",
     border: "#bfdbfe",
     text: "#1d4ed8",
-    accent: "#dbeafe",
   },
   l2: {
     bg: "#f5f3ff",
     border: "#ddd6fe",
     text: "#6d28d9",
-    accent: "#ede9fe",
   },
   l3: {
     bg: "#fff7ed",
     border: "#fed7aa",
     text: "#c2410c",
-    accent: "#ffedd5",
   },
   default: {
     bg: "#f8fafc",
     border: "#dbe2ea",
     text: "#475569",
-    accent: "#f1f5f9",
   },
 };
 
@@ -275,8 +355,8 @@ function getNextOccurrenceDate(startDate: string, weekday: number) {
   return next;
 }
 
-function summarizeFreeWindows(items: Array<{ time: string }>) {
-  const occupied = new Set(items.map((item) => item.time));
+function summarizeFreeWindows(items: Array<{ startTime: string }>) {
+  const occupied = new Set(items.map((item) => item.startTime));
   const freeSlots = hourSlots.filter((hour) => !occupied.has(hour));
   if (freeSlots.length === 0) return "Sem horários livres";
 
@@ -306,6 +386,25 @@ function summarizeFreeWindows(items: Array<{ time: string }>) {
   return ranges.slice(0, 2).join(" • ");
 }
 
+function timeToMinutes(value: string) {
+  const [h, m] = value.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function addMinutes(time: string, minutes: number) {
+  const total = timeToMinutes(time) + minutes;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function isTimeWithinSlot(slot: string, startTime: string, endTime: string) {
+  const slotMinutes = timeToMinutes(slot);
+  const startMinutes = timeToMinutes(startTime);
+  const endMinutes = timeToMinutes(endTime);
+  return slotMinutes >= startMinutes && slotMinutes < endMinutes;
+}
+
 function createDefaultAppointmentState(
   selectedDate: string,
   patientId = patientsSeed[0]?.id || "",
@@ -326,6 +425,18 @@ function createDefaultAppointmentState(
       ...day,
       times: [...day.times],
     })),
+  };
+}
+
+function createDefaultCompanyForm(locationId = locationsSeed[0]?.id || "l1"): CompanyFormState {
+  return {
+    companyName: "",
+    locationId,
+    weekday: 1,
+    startTime: "08:00",
+    endTime: "12:00",
+    notes: "",
+    active: true,
   };
 }
 
@@ -428,7 +539,7 @@ function Badge({
   return <span style={{ ...styles.badge, ...toneStyles[tone] }}>{children}</span>;
 }
 
-const statusTone = (status: string): "default" | "success" | "danger" => {
+const statusTone = (status?: string): "default" | "success" | "danger" => {
   if (status === "Confirmado" || status === "Realizado") return "success";
   if (status === "Cancelado") return "danger";
   return "default";
@@ -442,6 +553,7 @@ export default function App() {
   const [locations, setLocations] = useState<Location[]>(locationsSeed);
   const [patients, setPatients] = useState<Patient[]>(patientsSeed);
   const [appointments, setAppointments] = useState<Appointment[]>(appointmentsSeed);
+  const [companyBlocks, setCompanyBlocks] = useState<CompanyBlock[]>(companyBlocksSeed);
 
   const [tab, setTab] = useState("agenda");
   const [calendarView, setCalendarView] = useState("week");
@@ -452,10 +564,10 @@ export default function App() {
     useState<EnrichedAppointment | null>(null);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [selectedCompanyBlock, setSelectedCompanyBlock] = useState<CompanyBlock | null>(null);
 
   const [appointmentReturnTo, setAppointmentReturnTo] = useState<ReturnTarget>(null);
   const [patientReturnTo, setPatientReturnTo] = useState<ReturnTarget>(null);
-  const [locationReturnTo, setLocationReturnTo] = useState<ReturnTarget>(null);
 
   const [patientDialogOpen, setPatientDialogOpen] = useState(false);
   const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
@@ -466,6 +578,13 @@ export default function App() {
   const [editingLocationId, setEditingLocationId] = useState<string | null>(null);
   const [locationFormName, setLocationFormName] = useState("");
   const [deleteLocationTarget, setDeleteLocationTarget] = useState<Location | null>(null);
+
+  const [companyManagerOpen, setCompanyManagerOpen] = useState(false);
+  const [editingCompanyId, setEditingCompanyId] = useState<string | null>(null);
+  const [companyForm, setCompanyForm] = useState<CompanyFormState>(
+    createDefaultCompanyForm()
+  );
+  const [deleteCompanyTarget, setDeleteCompanyTarget] = useState<CompanyBlock | null>(null);
 
   const [monthlyPatientDetails, setMonthlyPatientDetails] = useState<{
     name: string;
@@ -514,35 +633,114 @@ export default function App() {
     }));
   }, [appointments, patients, locations]);
 
-  const filteredAppointments = useMemo(() => {
-    return enrichedAppointments.filter((a) => {
-      if (!search.trim()) return true;
-      return a.patient?.name.toLowerCase().includes(search.toLowerCase());
+  const generatedCompanyEvents = useMemo<AgendaEvent[]>(() => {
+    const datesNeeded = new Set<string>();
+    const base = new Date(`${selectedDate}T00:00:00`);
+
+    datesNeeded.add(toIsoDate(base));
+
+    const diffToMonday = base.getDay() === 0 ? -6 : 1 - base.getDay();
+    const monday = new Date(base);
+    monday.setDate(base.getDate() + diffToMonday);
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      datesNeeded.add(toIsoDate(d));
+    }
+
+    const first = new Date(base.getFullYear(), base.getMonth(), 1);
+    const last = new Date(base.getFullYear(), base.getMonth() + 1, 0);
+    const cursor = new Date(first);
+    while (cursor <= last) {
+      datesNeeded.add(toIsoDate(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    const result: AgendaEvent[] = [];
+    Array.from(datesNeeded).forEach((dateStr) => {
+      const d = new Date(`${dateStr}T00:00:00`);
+      const weekday = d.getDay() === 0 ? 7 : d.getDay();
+
+      companyBlocks
+        .filter((block) => block.active && block.weekday === weekday)
+        .forEach((block) => {
+          const location = locations.find((loc) => loc.id === block.locationId);
+          result.push({
+            id: `company-${block.id}-${dateStr}`,
+            kind: "company",
+            date: dateStr,
+            startTime: block.startTime,
+            endTime: block.endTime,
+            title: block.companyName,
+            subtitle: `${location?.name || "Local"} • Empresa`,
+            locationId: block.locationId,
+            notes: block.notes,
+            sourceCompany: block,
+          });
+        });
     });
-  }, [enrichedAppointments, search]);
+
+    return result.sort((a, b) =>
+      `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`)
+    );
+  }, [companyBlocks, locations, selectedDate]);
+
+  const agendaEvents = useMemo<AgendaEvent[]>(() => {
+    const appointmentEvents: AgendaEvent[] = enrichedAppointments.map((appt) => ({
+      id: `appointment-${appt.id}`,
+      kind: "appointment",
+      date: appt.date,
+      startTime: appt.time,
+      endTime: addMinutes(appt.time, appt.duration),
+      title: appt.patient?.name || "Paciente",
+      subtitle: `${appt.location?.name || "Local"} • ${appt.type}`,
+      locationId: appt.locationId,
+      status: appt.status,
+      sourceAppointment: appt,
+    }));
+
+    return [...appointmentEvents, ...generatedCompanyEvents];
+  }, [enrichedAppointments, generatedCompanyEvents]);
+
+  const filteredAgendaEvents = useMemo(() => {
+    return agendaEvents.filter((event) => {
+      if (!search.trim()) return true;
+      const query = search.toLowerCase();
+      return (
+        event.title.toLowerCase().includes(query) ||
+        event.subtitle.toLowerCase().includes(query)
+      );
+    });
+  }, [agendaEvents, search]);
 
   const stats = useMemo(() => {
-    const today = enrichedAppointments.filter((a) => a.date === selectedDate);
+    const today = filteredAgendaEvents.filter((a) => a.date === selectedDate);
     return {
       total: today.length,
-      confirmed: today.filter((a) => a.status === "Confirmado").length,
-      pending: today.filter((a) => a.status === "Agendado").length,
-      changes: today.filter((a) => a.notes.toLowerCase().includes("reag")).length,
+      confirmed: today.filter((a) => a.kind === "appointment" && a.status === "Confirmado")
+        .length,
+      pending: today.filter((a) => a.kind === "appointment" && a.status === "Agendado")
+        .length,
+      companies: today.filter((a) => a.kind === "company").length,
     };
-  }, [enrichedAppointments, selectedDate]);
+  }, [filteredAgendaEvents, selectedDate]);
 
-  const dayItems = useMemo(() => {
-    return filteredAppointments
+  const dayEvents = useMemo(() => {
+    return filteredAgendaEvents
       .filter((a) => a.date === selectedDate)
-      .sort((a, b) => a.time.localeCompare(b.time));
-  }, [filteredAppointments, selectedDate]);
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  }, [filteredAgendaEvents, selectedDate]);
 
   const daySchedule = useMemo(() => {
     return hourSlots.map((hour) => ({
       hour,
-      appointments: dayItems.filter((item) => item.time === hour),
+      events: dayEvents.filter((event) =>
+        event.kind === "company"
+          ? isTimeWithinSlot(hour, event.startTime, event.endTime)
+          : event.startTime === hour
+      ),
     }));
-  }, [dayItems]);
+  }, [dayEvents]);
 
   const weekDates = useMemo(() => {
     const base = new Date(`${selectedDate}T00:00:00`);
@@ -587,23 +785,18 @@ export default function App() {
     return list;
   }, [selectedDate]);
 
-  const appointmentsByDate = useMemo(() => {
-    return filteredAppointments.reduce<Record<string, EnrichedAppointment[]>>(
-      (acc, appt) => {
-        if (!acc[appt.date]) acc[appt.date] = [];
-        acc[appt.date].push(appt);
-        acc[appt.date].sort((a, b) => a.time.localeCompare(b.time));
-        return acc;
-      },
-      {}
-    );
-  }, [filteredAppointments]);
+  const eventsByDate = useMemo(() => {
+    return filteredAgendaEvents.reduce<Record<string, AgendaEvent[]>>((acc, event) => {
+      if (!acc[event.date]) acc[event.date] = [];
+      acc[event.date].push(event);
+      acc[event.date].sort((a, b) => a.startTime.localeCompare(b.startTime));
+      return acc;
+    }, {});
+  }, [filteredAgendaEvents]);
 
   const monthlySummaryByPatient = useMemo(() => {
     const monthPrefix = selectedDate.slice(0, 7);
-    const scoped = filteredAppointments.filter((appt) =>
-      appt.date.startsWith(monthPrefix)
-    );
+    const scoped = enrichedAppointments.filter((appt) => appt.date.startsWith(monthPrefix));
 
     const grouped = scoped.reduce<
       Record<
@@ -645,7 +838,7 @@ export default function App() {
     return Object.values(grouped).sort(
       (a, b) => b.total - a.total || a.name.localeCompare(b.name)
     );
-  }, [filteredAppointments, selectedDate]);
+  }, [enrichedAppointments, selectedDate]);
 
   const recurrenceSelection = useMemo(() => {
     const selectedDays = newAppointment.recurrenceDays.filter((day) => day.selected);
@@ -674,33 +867,43 @@ export default function App() {
 
   const selectedLocationAppointments = useMemo(() => {
     if (!selectedLocation) return [];
-    return enrichedAppointments
-      .filter((appt) => appt.locationId === selectedLocation.id)
-      .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`));
-  }, [selectedLocation, enrichedAppointments]);
+    return agendaEvents
+      .filter((evt) => evt.locationId === selectedLocation.id)
+      .sort((a, b) => `${a.date} ${a.startTime}`.localeCompare(`${b.date} ${b.startTime}`));
+  }, [selectedLocation, agendaEvents]);
 
   const selectedLocationPatients = useMemo(() => {
     if (!selectedLocation) return [];
-    const ids = Array.from(new Set(selectedLocationAppointments.map((appt) => appt.patientId)));
+    const ids = Array.from(
+      new Set(
+        enrichedAppointments
+          .filter((appt) => appt.locationId === selectedLocation.id)
+          .map((appt) => appt.patientId)
+      )
+    );
     return ids
       .map((id) => patients.find((patient) => patient.id === id))
       .filter(Boolean) as Patient[];
-  }, [selectedLocation, selectedLocationAppointments, patients]);
+  }, [selectedLocation, enrichedAppointments, patients]);
 
   const deleteLocationAppointments = useMemo(() => {
     if (!deleteLocationTarget) return [];
-    return enrichedAppointments.filter(
-      (appt) => appt.locationId === deleteLocationTarget.id
-    );
-  }, [deleteLocationTarget, enrichedAppointments]);
+    return agendaEvents.filter((evt) => evt.locationId === deleteLocationTarget.id);
+  }, [deleteLocationTarget, agendaEvents]);
 
   const deleteLocationPatients = useMemo(() => {
     if (!deleteLocationTarget) return [];
-    const ids = Array.from(new Set(deleteLocationAppointments.map((appt) => appt.patientId)));
+    const ids = Array.from(
+      new Set(
+        enrichedAppointments
+          .filter((appt) => appt.locationId === deleteLocationTarget.id)
+          .map((appt) => appt.patientId)
+      )
+    );
     return ids
       .map((id) => patients.find((patient) => patient.id === id))
       .filter(Boolean) as Patient[];
-  }, [deleteLocationTarget, deleteLocationAppointments, patients]);
+  }, [deleteLocationTarget, enrichedAppointments, patients]);
 
   function resetAppointmentForm() {
     setNewAppointment(
@@ -710,6 +913,11 @@ export default function App() {
         locations[0]?.id || "l1"
       )
     );
+  }
+
+  function resetCompanyForm() {
+    setCompanyForm(createDefaultCompanyForm(locations[0]?.id || "l1"));
+    setEditingCompanyId(null);
   }
 
   function createPatient() {
@@ -891,30 +1099,16 @@ export default function App() {
     setSelectedPatient(patient);
   }
 
-  function openLocation(location: Location, returnTo: ReturnTarget = null) {
-    setLocationReturnTo(returnTo);
-    setSelectedLocation(location);
-  }
-
   function handleBackFromAppointment() {
     setSelectedAppointment(null);
     if (appointmentReturnTo === "monthly" && monthlyPatientDetails) setMonthlyOpen(true);
     if (appointmentReturnTo === "patient" && selectedPatient) setSelectedPatient(selectedPatient);
-    if (appointmentReturnTo === "location" && selectedLocation) setSelectedLocation(selectedLocation);
     setAppointmentReturnTo(null);
   }
 
   function handleBackFromPatient() {
-    const returnTo = patientReturnTo;
-    const keepLocation = selectedLocation;
     setSelectedPatient(null);
-    if (returnTo === "location" && keepLocation) setSelectedLocation(keepLocation);
     setPatientReturnTo(null);
-  }
-
-  function handleBackFromLocation() {
-    setSelectedLocation(null);
-    setLocationReturnTo(null);
   }
 
   function openRescheduleDialog() {
@@ -1049,8 +1243,105 @@ export default function App() {
       prev.filter((appt) => appt.locationId !== deleteLocationTarget.id)
     );
 
+    setCompanyBlocks((prev) =>
+      prev.filter((block) => block.locationId !== deleteLocationTarget.id)
+    );
+
     showToast("success", "Local removido com sucesso.");
     setDeleteLocationTarget(null);
+  }
+
+  function openCompanyManager() {
+    setCompanyManagerOpen(true);
+    setDeleteCompanyTarget(null);
+    resetCompanyForm();
+  }
+
+  function startAddCompany() {
+    resetCompanyForm();
+    setEditingCompanyId("new");
+  }
+
+  function startEditCompany(block: CompanyBlock) {
+    setEditingCompanyId(block.id);
+    setCompanyForm({
+      companyName: block.companyName,
+      locationId: block.locationId,
+      weekday: block.weekday,
+      startTime: block.startTime,
+      endTime: block.endTime,
+      notes: block.notes,
+      active: block.active,
+    });
+  }
+
+  function cancelCompanyForm() {
+    resetCompanyForm();
+  }
+
+  function saveCompanyForm() {
+    if (!companyForm.companyName.trim()) {
+      showToast("error", "Informe o nome da empresa.");
+      return;
+    }
+
+    if (!companyForm.locationId) {
+      showToast("error", "Selecione o local.");
+      return;
+    }
+
+    if (timeToMinutes(companyForm.endTime) <= timeToMinutes(companyForm.startTime)) {
+      showToast("error", "A hora final deve ser maior que a hora inicial.");
+      return;
+    }
+
+    if (editingCompanyId === "new") {
+      setCompanyBlocks((prev) => [
+        ...prev,
+        {
+          id: nextId("c"),
+          companyName: companyForm.companyName,
+          locationId: companyForm.locationId,
+          weekday: companyForm.weekday,
+          startTime: companyForm.startTime,
+          endTime: companyForm.endTime,
+          notes: companyForm.notes,
+          active: companyForm.active,
+        },
+      ]);
+      showToast("success", "Rotina da empresa criada com sucesso.");
+    } else if (editingCompanyId) {
+      setCompanyBlocks((prev) =>
+        prev.map((block) =>
+          block.id === editingCompanyId
+            ? {
+                ...block,
+                companyName: companyForm.companyName,
+                locationId: companyForm.locationId,
+                weekday: companyForm.weekday,
+                startTime: companyForm.startTime,
+                endTime: companyForm.endTime,
+                notes: companyForm.notes,
+                active: companyForm.active,
+              }
+            : block
+        )
+      );
+      showToast("success", "Rotina da empresa atualizada com sucesso.");
+    }
+
+    resetCompanyForm();
+  }
+
+  function requestDeleteCompany(block: CompanyBlock) {
+    setDeleteCompanyTarget(block);
+  }
+
+  function confirmDeleteCompany() {
+    if (!deleteCompanyTarget) return;
+    setCompanyBlocks((prev) => prev.filter((block) => block.id !== deleteCompanyTarget.id));
+    setDeleteCompanyTarget(null);
+    showToast("success", "Rotina da empresa removida com sucesso.");
   }
 
   return (
@@ -1109,7 +1400,7 @@ export default function App() {
               </h1>
               <p style={styles.subtitle}>
                 Uma agenda leve, organizada e agradável para acompanhar pacientes,
-                horários e locais de atendimento.
+                empresas, horários e locais de atendimento.
               </p>
             </div>
 
@@ -1138,6 +1429,14 @@ export default function App() {
 
               <button
                 style={{ ...styles.secondaryButton, width: isMobile ? "100%" : "auto" }}
+                onClick={openCompanyManager}
+              >
+                <span style={styles.buttonIcon}>🏢</span>
+                Empresas fixas
+              </button>
+
+              <button
+                style={{ ...styles.secondaryButton, width: isMobile ? "100%" : "auto" }}
                 onClick={openManageLocations}
               >
                 <span style={styles.buttonIcon}>📍</span>
@@ -1159,7 +1458,7 @@ export default function App() {
         >
           <SectionCard style={styles.statCard}>
             <div style={styles.statLine}>
-              <span>Atendimentos do dia</span>
+              <span>Eventos do dia</span>
               <strong>{stats.total}</strong>
             </div>
           </SectionCard>
@@ -1177,8 +1476,8 @@ export default function App() {
           </SectionCard>
           <SectionCard style={styles.statCard}>
             <div style={styles.statLine}>
-              <span>Mudanças</span>
-              <strong>{stats.changes}</strong>
+              <span>Empresas no dia</span>
+              <strong>{stats.companies}</strong>
             </div>
           </SectionCard>
         </div>
@@ -1259,7 +1558,7 @@ export default function App() {
                       style={styles.input}
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
-                      placeholder="Paciente"
+                      placeholder="Paciente, empresa ou local"
                     />
                   </div>
                 </div>
@@ -1273,44 +1572,68 @@ export default function App() {
                           <span
                             style={{
                               color:
-                                slot.appointments.length > 0
-                                  ? colors.subtext
-                                  : colors.successText,
+                                slot.events.length > 0 ? colors.subtext : colors.successText,
                               fontSize: 12,
                               fontWeight: 700,
                             }}
                           >
-                            {slot.appointments.length > 0
-                              ? `${slot.appointments.length} agendamento(s)`
+                            {slot.events.length > 0
+                              ? `${slot.events.length} evento(s)`
                               : "Livre"}
                           </span>
                         </div>
 
-                        {slot.appointments.length > 0 ? (
+                        {slot.events.length > 0 ? (
                           <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-                            {slot.appointments.map((appt) => {
-                              const theme = getLocationTheme(appt.locationId);
+                            {slot.events.map((event) => {
+                              if (event.kind === "company") {
+                                return (
+                                  <button
+                                    key={event.id}
+                                    style={styles.companyEventButton}
+                                    onClick={() => setSelectedCompanyBlock(event.sourceCompany || null)}
+                                  >
+                                    <div style={styles.rowBetween}>
+                                      <div style={{ textAlign: "left" }}>
+                                        <div style={{ fontWeight: 700 }}>🏢 {event.title}</div>
+                                        <div style={{ color: colors.subtext, fontSize: 13 }}>
+                                          {event.subtitle}
+                                        </div>
+                                        <div style={{ color: colors.companyText, fontSize: 12 }}>
+                                          {event.startTime} às {event.endTime}
+                                        </div>
+                                      </div>
+                                      <Badge tone="soft">Empresa</Badge>
+                                    </div>
+                                  </button>
+                                );
+                              }
+
+                              const theme = getLocationTheme(event.locationId);
                               return (
                                 <button
-                                  key={appt.id}
+                                  key={event.id}
                                   style={{
                                     ...styles.appointmentButton,
                                     background: theme.bg,
                                     borderColor: theme.border,
                                   }}
-                                  onClick={() => openAppointment(appt)}
+                                  onClick={() =>
+                                    event.sourceAppointment &&
+                                    openAppointment(event.sourceAppointment)
+                                  }
                                 >
                                   <div style={styles.rowBetween}>
                                     <div style={{ textAlign: "left" }}>
-                                      <div style={{ fontWeight: 700 }}>{appt.patient?.name}</div>
+                                      <div style={{ fontWeight: 700 }}>{event.title}</div>
                                       <div style={{ color: colors.subtext, fontSize: 13 }}>
-                                        {appt.location?.name} • {appt.type}
+                                        {event.subtitle}
                                       </div>
                                       <div style={{ color: colors.subtext, fontSize: 12 }}>
-                                        {appt.recurrenceLabel || "Único"}
+                                        {event.startTime}
                                       </div>
                                     </div>
-                                    <Badge tone={statusTone(appt.status)}>{appt.status}</Badge>
+                                    <Badge tone={statusTone(event.status)}>{event.status}</Badge>
                                   </div>
                                 </button>
                               );
@@ -1335,7 +1658,7 @@ export default function App() {
                       }}
                     >
                       {weekDates.map((day) => {
-                        const items = appointmentsByDate[day.iso] || [];
+                        const items = eventsByDate[day.iso] || [];
                         const isSelected = day.iso === selectedDate;
                         const freeSummary = summarizeFreeWindows(items);
 
@@ -1372,23 +1695,45 @@ export default function App() {
                               <div style={styles.freeBox}>Livre o dia todo</div>
                             ) : (
                               <div style={{ display: "grid", gap: 8 }}>
-                                {items.map((appt) => {
-                                  const theme = getLocationTheme(appt.locationId);
+                                {items.map((event) => {
+                                  if (event.kind === "company") {
+                                    return (
+                                      <button
+                                        key={event.id}
+                                        style={styles.companyMiniButton}
+                                        onClick={() =>
+                                          setSelectedCompanyBlock(event.sourceCompany || null)
+                                        }
+                                      >
+                                        <div style={{ fontWeight: 700, fontSize: 12 }}>
+                                          🏢 {event.title}
+                                        </div>
+                                        <div style={{ color: colors.companyText, fontSize: 11 }}>
+                                          {event.startTime} às {event.endTime}
+                                        </div>
+                                      </button>
+                                    );
+                                  }
+
+                                  const theme = getLocationTheme(event.locationId);
                                   return (
                                     <button
-                                      key={appt.id}
+                                      key={event.id}
                                       style={{
                                         ...styles.appointmentMini,
                                         background: theme.bg,
                                         borderColor: theme.border,
                                       }}
-                                      onClick={() => openAppointment(appt)}
+                                      onClick={() =>
+                                        event.sourceAppointment &&
+                                        openAppointment(event.sourceAppointment)
+                                      }
                                     >
                                       <div style={{ fontWeight: 700, fontSize: 12 }}>
-                                        {appt.time} • {appt.patient?.name}
+                                        {event.startTime} • {event.title}
                                       </div>
                                       <div style={{ color: colors.subtext, fontSize: 11 }}>
-                                        {appt.location?.name}
+                                        {event.subtitle}
                                       </div>
                                     </button>
                                   );
@@ -1440,7 +1785,7 @@ export default function App() {
                         }}
                       >
                         {monthDates.map((day) => {
-                          const items = appointmentsByDate[day.iso] || [];
+                          const items = eventsByDate[day.iso] || [];
                           const isSelected = day.iso === selectedDate;
 
                           return (
@@ -1466,11 +1811,22 @@ export default function App() {
                                 <div style={styles.freeBox}>Livre</div>
                               ) : (
                                 <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
-                                  {items.slice(0, 3).map((appt) => {
-                                    const theme = getLocationTheme(appt.locationId);
+                                  {items.slice(0, 4).map((event) => {
+                                    if (event.kind === "company") {
+                                      return (
+                                        <div
+                                          key={event.id}
+                                          style={styles.monthCompanyPill}
+                                        >
+                                          🏢 {event.startTime}
+                                        </div>
+                                      );
+                                    }
+
+                                    const theme = getLocationTheme(event.locationId);
                                     return (
                                       <div
-                                        key={appt.id}
+                                        key={event.id}
                                         style={{
                                           ...styles.monthEventPill,
                                           background: theme.bg,
@@ -1478,13 +1834,13 @@ export default function App() {
                                           color: theme.text,
                                         }}
                                       >
-                                        <span>{appt.time}</span>
+                                        {event.startTime}
                                       </div>
                                     );
                                   })}
-                                  {items.length > 3 ? (
+                                  {items.length > 4 ? (
                                     <div style={{ fontSize: 11, color: colors.subtext }}>
-                                      + {items.length - 3} horário(s)
+                                      + {items.length - 4} evento(s)
                                     </div>
                                   ) : null}
                                 </div>
@@ -1496,9 +1852,27 @@ export default function App() {
 
                       <div style={styles.monthLegend}>
                         <div style={styles.monthLegendItem}>
-                          <span style={{ ...styles.legendDot, background: colors.freeBg, borderColor: colors.freeBorder }} />
+                          <span
+                            style={{
+                              ...styles.legendDot,
+                              background: colors.freeBg,
+                              borderColor: colors.freeBorder,
+                            }}
+                          />
                           Livre
                         </div>
+
+                        <div style={styles.monthLegendItem}>
+                          <span
+                            style={{
+                              ...styles.legendDot,
+                              background: colors.companyBg,
+                              borderColor: colors.companyBorder,
+                            }}
+                          />
+                          Empresa fixa
+                        </div>
+
                         {locations.map((location) => {
                           const theme = getLocationTheme(location.id);
                           return (
@@ -1606,7 +1980,7 @@ export default function App() {
                     >
                       <div>Telefone: {patient.phone}</div>
                       <div>
-                        Local:{" "}
+                        Local: {" "}
                         {locations.find((l) => l.id === patient.defaultLocationId)?.name ||
                           "Sem local"}
                       </div>
@@ -1634,16 +2008,19 @@ export default function App() {
           <SectionCard>
             <h2 style={styles.sectionTitle}>Locais</h2>
             <p style={styles.sectionDescription}>
-              Toque em um local para ver quem atende lá e os próximos atendimentos.
+              Toque em um local para ver quem atende lá e os próximos eventos.
             </p>
 
             <div style={{ display: "grid", gap: 12, marginTop: 16 }}>
               {locations.map((loc) => {
-                const locationAppointments = filteredAppointments.filter(
-                  (a) => a.locationId === loc.id
-                );
+                const locationEvents = agendaEvents.filter((a) => a.locationId === loc.id);
                 const patientNames = Array.from(
-                  new Set(locationAppointments.map((a) => a.patient?.name).filter(Boolean))
+                  new Set(
+                    enrichedAppointments
+                      .filter((a) => a.locationId === loc.id)
+                      .map((a) => a.patient?.name)
+                      .filter(Boolean)
+                  )
                 );
                 const theme = getLocationTheme(loc.id);
 
@@ -1655,12 +2032,12 @@ export default function App() {
                       background: theme.bg,
                       borderColor: theme.border,
                     }}
-                    onClick={() => openLocation(loc)}
+                    onClick={() => setSelectedLocation(loc)}
                   >
                     <div style={styles.rowBetween}>
                       <strong>{loc.name}</strong>
                       <span style={{ color: colors.subtext, fontSize: 14 }}>
-                        {locationAppointments.length} atend.
+                        {locationEvents.length} evento(s)
                       </span>
                     </div>
 
@@ -1799,6 +2176,54 @@ export default function App() {
       </Modal>
 
       <Modal
+        open={!!selectedCompanyBlock}
+        onClose={() => setSelectedCompanyBlock(null)}
+        title={`🏢 ${selectedCompanyBlock?.companyName || "Empresa"}`}
+        description="Rotina fixa de prestação de serviço."
+      >
+        {selectedCompanyBlock ? (
+          <div style={{ display: "grid", gap: 12 }}>
+            <div style={styles.infoGrid}>
+              <div>
+                <strong>Empresa:</strong> {selectedCompanyBlock.companyName}
+              </div>
+              <div>
+                <strong>Local:</strong>{" "}
+                {locations.find((l) => l.id === selectedCompanyBlock.locationId)?.name}
+              </div>
+              <div>
+                <strong>Dia:</strong> {weekdayFullLabels[selectedCompanyBlock.weekday]}
+              </div>
+              <div>
+                <strong>Horário:</strong> {selectedCompanyBlock.startTime} às {selectedCompanyBlock.endTime}
+              </div>
+              <div>
+                <strong>Status:</strong>{" "}
+                {selectedCompanyBlock.active ? "Ativo" : "Inativo"}
+              </div>
+              <div>
+                <strong>Observações:</strong>{" "}
+                {selectedCompanyBlock.notes || "Sem observações"}
+              </div>
+            </div>
+
+            <div style={styles.footerButtons}>
+              <button
+                style={styles.secondaryButton}
+                onClick={() => {
+                  setSelectedCompanyBlock(null);
+                  setCompanyManagerOpen(true);
+                  startEditCompany(selectedCompanyBlock);
+                }}
+              >
+                Editar rotina
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
         open={!!selectedPatient}
         onClose={() => {
           setSelectedPatient(null);
@@ -1865,19 +2290,15 @@ export default function App() {
 
       <Modal
         open={!!selectedLocation}
-        onClose={() => {
-          setSelectedLocation(null);
-          setLocationReturnTo(null);
-        }}
-        onBack={locationReturnTo ? handleBackFromLocation : undefined}
+        onClose={() => setSelectedLocation(null)}
         title={`📍 ${selectedLocation?.name || "Local"}`}
-        description="Veja os pacientes atendidos aqui e os próximos atendimentos."
+        description="Veja os pacientes atendidos aqui e os próximos eventos."
       >
         {selectedLocation ? (
           <div style={{ display: "grid", gap: 14 }}>
             <div style={styles.infoGrid}>
               <div>
-                <strong>Total de atendimentos:</strong> {selectedLocationAppointments.length}
+                <strong>Total de eventos:</strong> {selectedLocationAppointments.length}
               </div>
               <div>
                 <strong>Pacientes vinculados:</strong> {selectedLocationPatients.length}
@@ -1892,7 +2313,7 @@ export default function App() {
                     <button
                       key={patient.id}
                       style={styles.miniInfoButton}
-                      onClick={() => openPatient(patient, "location")}
+                      onClick={() => openPatient(patient)}
                     >
                       <div style={{ fontWeight: 700 }}>{patient.name}</div>
                       <div style={{ color: colors.subtext, fontSize: 13 }}>
@@ -1907,26 +2328,22 @@ export default function App() {
             </div>
 
             <div style={styles.infoBox}>
-              <div style={{ fontWeight: 700, marginBottom: 8 }}>Próximos atendimentos</div>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Próximos eventos</div>
               {selectedLocationAppointments.length > 0 ? (
                 <div style={{ display: "grid", gap: 10 }}>
-                  {selectedLocationAppointments.slice(0, 8).map((appt) => (
-                    <button
-                      key={appt.id}
-                      style={styles.miniInfoButton}
-                      onClick={() => openAppointment(appt, "location")}
-                    >
+                  {selectedLocationAppointments.slice(0, 8).map((event) => (
+                    <div key={event.id} style={styles.miniInfoButton}>
                       <div style={{ fontWeight: 700 }}>
-                        {appt.patient?.name} • {formatDate(appt.date)} às {appt.time}
+                        {formatDate(event.date)} • {event.startTime}
                       </div>
                       <div style={{ color: colors.subtext, fontSize: 13 }}>
-                        {appt.type} • {appt.recurrenceLabel || "Único"}
+                        {event.kind === "company" ? `Empresa: ${event.title}` : event.title}
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               ) : (
-                <div style={{ color: colors.subtext }}>Nenhum atendimento encontrado.</div>
+                <div style={{ color: colors.subtext }}>Nenhum evento encontrado.</div>
               )}
             </div>
           </div>
@@ -1985,11 +2402,16 @@ export default function App() {
 
             <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
               {locations.map((location) => {
-                const linkedAppointments = enrichedAppointments.filter(
-                  (appt) => appt.locationId === location.id
+                const linkedEvents = agendaEvents.filter(
+                  (evt) => evt.locationId === location.id
                 );
                 const linkedPatients = Array.from(
-                  new Set(linkedAppointments.map((appt) => appt.patient?.name).filter(Boolean))
+                  new Set(
+                    enrichedAppointments
+                      .filter((appt) => appt.locationId === location.id)
+                      .map((appt) => appt.patient?.name)
+                      .filter(Boolean)
+                  )
                 );
                 const theme = getLocationTheme(location.id);
 
@@ -2010,12 +2432,15 @@ export default function App() {
                             ? `Pacientes: ${linkedPatients.join(", ")}`
                             : "Sem pacientes vinculados"}
                         </div>
+                        <div style={{ color: colors.subtext, fontSize: 12, marginTop: 4 }}>
+                          {linkedEvents.length} evento(s) vinculados
+                        </div>
                       </div>
 
                       <div style={styles.manageActions}>
                         <button
                           style={styles.secondaryButton}
-                          onClick={() => openLocation(location)}
+                          onClick={() => setSelectedLocation(location)}
                         >
                           Ver
                         </button>
@@ -2064,7 +2489,8 @@ export default function App() {
               </div>
 
               <div style={{ color: colors.subtext, fontSize: 14, marginTop: 12 }}>
-                Também serão removidos os agendamentos ligados a este local. Tem certeza?
+                Também serão removidos os agendamentos e rotinas fixas ligados a este local.
+                Tem certeza?
               </div>
 
               <div style={{ ...styles.footerButtons, marginTop: 14 }}>
@@ -2075,6 +2501,235 @@ export default function App() {
                   Cancelar
                 </button>
                 <button style={styles.deleteButton} onClick={confirmDeleteLocation}>
+                  Confirmar remoção
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </Modal>
+
+      <Modal
+        open={companyManagerOpen}
+        onClose={() => {
+          setCompanyManagerOpen(false);
+          setDeleteCompanyTarget(null);
+          resetCompanyForm();
+        }}
+        title="🏢 Empresas / rotinas fixas"
+        description="Cadastre e edite dias e horários fixos de atendimento para empresas."
+      >
+        <div style={{ display: "grid", gap: 16 }}>
+          <div style={styles.formSection}>
+            <div style={styles.rowBetween}>
+              <strong>Rotinas cadastradas</strong>
+              {editingCompanyId ? null : (
+                <button style={styles.primaryButton} onClick={startAddCompany}>
+                  <span style={styles.buttonIcon}>＋</span>
+                  Nova rotina
+                </button>
+              )}
+            </div>
+
+            {editingCompanyId ? (
+              <div style={{ ...styles.infoBox, marginTop: 14 }}>
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div>
+                    <label style={styles.label}>Empresa / contrato</label>
+                    <input
+                      style={styles.input}
+                      value={companyForm.companyName}
+                      onChange={(e) =>
+                        setCompanyForm({ ...companyForm, companyName: e.target.value })
+                      }
+                      placeholder="Nome da empresa ou consultório"
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      ...styles.formGrid2,
+                      gridTemplateColumns: isMobile
+                        ? "1fr"
+                        : "repeat(auto-fit, minmax(220px, 1fr))",
+                    }}
+                  >
+                    <div>
+                      <label style={styles.label}>Local</label>
+                      <select
+                        style={styles.input}
+                        value={companyForm.locationId}
+                        onChange={(e) =>
+                          setCompanyForm({ ...companyForm, locationId: e.target.value })
+                        }
+                      >
+                        {locations.map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label style={styles.label}>Dia da semana</label>
+                      <select
+                        style={styles.input}
+                        value={companyForm.weekday}
+                        onChange={(e) =>
+                          setCompanyForm({ ...companyForm, weekday: Number(e.target.value) })
+                        }
+                      >
+                        <option value={1}>Segunda</option>
+                        <option value={2}>Terça</option>
+                        <option value={3}>Quarta</option>
+                        <option value={4}>Quinta</option>
+                        <option value={5}>Sexta</option>
+                        <option value={6}>Sábado</option>
+                        <option value={7}>Domingo</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div
+                    style={{
+                      ...styles.formGrid2,
+                      gridTemplateColumns: isMobile
+                        ? "1fr"
+                        : "repeat(auto-fit, minmax(220px, 1fr))",
+                    }}
+                  >
+                    <div>
+                      <label style={styles.label}>Hora inicial</label>
+                      <input
+                        style={styles.input}
+                        type="time"
+                        value={companyForm.startTime}
+                        onChange={(e) =>
+                          setCompanyForm({ ...companyForm, startTime: e.target.value })
+                        }
+                      />
+                    </div>
+
+                    <div>
+                      <label style={styles.label}>Hora final</label>
+                      <input
+                        style={styles.input}
+                        type="time"
+                        value={companyForm.endTime}
+                        onChange={(e) =>
+                          setCompanyForm({ ...companyForm, endTime: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={styles.label}>Observações</label>
+                    <textarea
+                      style={styles.textarea}
+                      value={companyForm.notes}
+                      onChange={(e) =>
+                        setCompanyForm({ ...companyForm, notes: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <label style={styles.label}>Status</label>
+                    <select
+                      style={styles.input}
+                      value={companyForm.active ? "ativo" : "inativo"}
+                      onChange={(e) =>
+                        setCompanyForm({
+                          ...companyForm,
+                          active: e.target.value === "ativo",
+                        })
+                      }
+                    >
+                      <option value="ativo">Ativo</option>
+                      <option value="inativo">Inativo</option>
+                    </select>
+                  </div>
+
+                  <div style={styles.footerButtons}>
+                    <button style={styles.secondaryButton} onClick={cancelCompanyForm}>
+                      Cancelar
+                    </button>
+                    <button style={styles.primaryButton} onClick={saveCompanyForm}>
+                      Salvar rotina
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
+              {companyBlocks.map((block) => {
+                const location = locations.find((loc) => loc.id === block.locationId);
+                return (
+                  <div key={block.id} style={styles.companyManagerCard}>
+                    <div style={styles.rowBetween}>
+                      <div style={{ textAlign: "left" }}>
+                        <div style={{ fontWeight: 700 }}>🏢 {block.companyName}</div>
+                        <div style={{ color: colors.subtext, fontSize: 13, marginTop: 6 }}>
+                          {location?.name || "Local"} • {weekdayFullLabels[block.weekday]} •{" "}
+                          {block.startTime} às {block.endTime}
+                        </div>
+                        <div style={{ color: colors.subtext, fontSize: 12, marginTop: 4 }}>
+                          {block.notes || "Sem observações"}
+                        </div>
+                      </div>
+
+                      <div style={styles.manageActions}>
+                        <button
+                          style={styles.secondaryButton}
+                          onClick={() => setSelectedCompanyBlock(block)}
+                        >
+                          Ver
+                        </button>
+                        <button
+                          style={styles.secondaryButton}
+                          onClick={() => startEditCompany(block)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          style={styles.deleteButton}
+                          onClick={() => requestDeleteCompany(block)}
+                        >
+                          Remover
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {deleteCompanyTarget ? (
+            <div style={styles.warningBox}>
+              <div style={{ fontWeight: 800, marginBottom: 10 }}>
+                Confirmar remoção da rotina
+              </div>
+              <div style={{ color: colors.warningText, marginBottom: 10 }}>
+                Você está removendo a rotina de <strong>{deleteCompanyTarget.companyName}</strong>.
+              </div>
+
+              <div style={{ color: colors.subtext, fontSize: 14 }}>
+                {weekdayFullLabels[deleteCompanyTarget.weekday]} • {deleteCompanyTarget.startTime} às{" "}
+                {deleteCompanyTarget.endTime}
+              </div>
+
+              <div style={{ ...styles.footerButtons, marginTop: 14 }}>
+                <button
+                  style={styles.secondaryButton}
+                  onClick={() => setDeleteCompanyTarget(null)}
+                >
+                  Cancelar
+                </button>
+                <button style={styles.deleteButton} onClick={confirmDeleteCompany}>
                   Confirmar remoção
                 </button>
               </div>
@@ -2815,6 +3470,14 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     cursor: "pointer",
   },
+  companyEventButton: {
+    width: "100%",
+    background: colors.companyBg,
+    border: `1px solid ${colors.companyBorder}`,
+    borderRadius: 18,
+    padding: 12,
+    cursor: "pointer",
+  },
   weekCard: {
     borderRadius: 22,
     border: `1px solid ${colors.border}`,
@@ -2839,6 +3502,15 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     textAlign: "left",
   },
+  companyMiniButton: {
+    width: "100%",
+    background: colors.companyBg,
+    border: `1px solid ${colors.companyBorder}`,
+    borderRadius: 16,
+    padding: 9,
+    cursor: "pointer",
+    textAlign: "left",
+  },
   monthCell: {
     minHeight: 170,
     borderRadius: 22,
@@ -2854,6 +3526,18 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 4,
     borderRadius: 12,
     border: "1px solid",
+    padding: "6px 8px",
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  monthCompanyPill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    borderRadius: 12,
+    border: `1px solid ${colors.companyBorder}`,
+    background: colors.companyBg,
+    color: colors.companyText,
     padding: "6px 8px",
     fontSize: 11,
     fontWeight: 700,
@@ -2936,6 +3620,12 @@ const styles: Record<string, React.CSSProperties> = {
   manageLocationCard: {
     borderRadius: 18,
     border: `1px solid ${colors.border}`,
+    padding: 14,
+  },
+  companyManagerCard: {
+    borderRadius: 18,
+    border: `1px solid ${colors.companyBorder}`,
+    background: colors.companyBg,
     padding: 14,
   },
   manageActions: {
